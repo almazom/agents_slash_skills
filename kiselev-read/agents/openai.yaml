@@ -1,0 +1,4 @@
+interface:
+  display_name: "kiselev-read"
+  short_description: "Read-only fetch and analytics for DEKSDEN channel + chat, including `kiselev-week` weekly report mode"
+  default_prompt: "Use $kiselev-read only for DEKSDEN / Denis Kiselev / deksden_notes / DEKSDEN chat. Recognize both `kiselev-read` and `kiselev-week`. Inside this skill, `оба источника`, `вместе`, and `канал + чат` always mean @deksden_notes plus DEKSDEN (chat), never ИИшница. If the user says `kiselev-week`, build the answer in the saved weekly template: кратко, что публиковали в канале, обсуждения в чате, цитаты недели. Recognize Russian commands like забери неделю по каналу и чату, сначала забери потом проанализируй оба источника, недельный отчёт, таймлайн за неделю, ссылки за неделю, и github за неделю по двум источникам. Всегда оставайся в read-only режиме: не отправляй, не нажимай, не публикуй."

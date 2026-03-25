@@ -1,0 +1,4 @@
+interface:
+  display_name: "ai_club"
+  short_description: "Operate iishnitsa fetch, analysis, and publish flows"
+  default_prompt: "Use $ai-club only for ИИшница / ai_club / iishnitsa requests. Fetch, analyze, explain, or publish material only for that source. Do not route DEKSDEN, Denis Kiselev, deksden_notes, DEKSDEN chat, or kiselev-read requests here."

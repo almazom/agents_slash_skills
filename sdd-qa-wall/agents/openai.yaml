@@ -1,0 +1,3 @@
+interface:
+  display_name: "SDD QA Wall"
+  short_description: "Strict requirements wall before implementation"

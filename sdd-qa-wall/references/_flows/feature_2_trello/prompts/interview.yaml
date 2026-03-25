@@ -1,0 +1,133 @@
+raw_requirements_prompt: "Share the raw requirements or idea dump. Short or long is fine."
+
+interview_preferences_prompt: "Before we start, choose interview preferences (pacing and auto-accept mode). Do not ask about language or answer format."
+
+interview_preferences_questions:
+  - "Ask one question at a time or in small batches?"
+  - "Auto-accept mode? none / up2u (this question) / up2u all (remaining)"
+
+interview_preferences_rules: |-
+  - Ask only the two preferences above (pacing and auto-accept).
+  - Do not mention "format" or "language" in the preferences text.
+
+language_policy: |-
+  Use Russian for all interview questions and SDD documentation by default.
+  Do not ask for language preference unless the user explicitly requests a different language.
+
+baseline_questions:
+  - "Problem statement?"
+  - "Target users and roles?"
+  - "Top 3 desired outcomes?"
+  - "Deadline or timeline?"
+  - "Known constraints (tech, budget, compliance)?"
+
+question_format_template: |-
+  Context: {context}
+  Goal: {goal}
+  Why: {why}
+  Progress: {current}/{total}
+
+  Full question: {question}
+  Simple question: {simple_question}
+
+  Options:
+  1) SUGGESTED: {suggested_option}
+  2) {option_2}
+  3) {option_3}
+  4) Other (type your own)
+  5) up2u: accept suggested for this question
+  6) up2u all: accept suggested for all remaining questions (add brief rationale; no chain-of-thought)
+
+formatting_rules: |-
+  - Do NOT use markdown tables in interview questions.
+  - Use plain numbered options only.
+
+tooling_rules: |-
+  - Tool-first: if AskUserQuestionTool or sdd-interview-harness is available, use it to ask each interview question and capture the numeric answer.
+  - Do not fall back to plain text unless the user explicitly allows it.
+  - If no tool is available and no permission is given, stop and ask whether to proceed without tools.
+  - If the user selects up2u all, apply the suggested option to remaining gaps and include a short, plain-language rationale only.
+
+force_interview_rule: |-
+  If the raw requirements include "force_interview: true", run the gap interview even if the requirements appear complete.
+
+force_tool_rule: |-
+  If the raw requirements include "force_tool: AskUserQuestionTool" or "force_tool: sdd-interview-harness", use that tool for interview questions.
+  If the requested tool is unavailable, stop and ask whether to continue without it.
+
+gap_question_bank:
+  users:
+    - "Who uses it? Primary/secondary roles?"
+    - "Access levels?"
+  scope:
+    - "What is in scope?"
+    - "What is explicitly out of scope?"
+  core_flows:
+    - "Top 3 user journeys?"
+    - "Entry points and success endpoints?"
+  data:
+    - "What data is created/read/updated?"
+    - "Data sources?"
+    - "Data retention?"
+  integrations:
+    - "Which external systems/APIs?"
+    - "Auth requirements?"
+  non_functional:
+    - "Performance requirements?"
+    - "Reliability requirements?"
+    - "Security and privacy requirements?"
+    - "Localization requirements?"
+  constraints:
+    - "Platform or tech stack constraints?"
+    - "Licensing or deployment limits?"
+  success_criteria:
+    - "How is success measured?"
+    - "KPIs?"
+    - "Acceptable error rates?"
+  risks:
+    - "Biggest technical risks?"
+    - "Biggest business risks?"
+  milestones:
+    - "Any phased delivery?"
+    - "Dependencies?"
+
+critical_gap_buckets:
+  - problem_statement
+  - goals_success
+  - scope_non_goals
+  - users_roles
+  - core_flows
+  - data_model
+  - integrations_auth
+  - non_functional_priority
+  - constraints_dependencies
+
+optional_gap_candidates:
+  - timeline_default
+  - logging_format_default
+  - test_strategy_default
+  - config_naming_default
+  - error_handling_pattern_default
+  - risks_mitigations_default
+  - milestones_default
+
+auto_fill_policy: |-
+  Auto-fill optional gaps only when confidence is >= 0.95 and patterns match existing code/docs.
+  Record each auto-filled item as an assumption with a short reason and get user confirmation in one step.
+
+auto_fill_summary_prompt: |-
+  I auto-filled optional items based on repo patterns. Reply "yes" to accept or list changes:
+  {assumptions_list}
+
+open_questions_example: |-
+  - Open Question: <question>
+    - Answer: <answer>
+    - Status: closed
+
+gap_tracking_example: |-
+  - Gap ID: GAP-001
+    - Question: <question>
+    - Answer: <answer>
+    - Status: filled
+    - Source: user / auto / up2u all
+    - Short reason: <one sentence>

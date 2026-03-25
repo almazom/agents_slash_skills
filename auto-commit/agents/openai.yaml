@@ -1,0 +1,4 @@
+interface:
+  display_name: "Auto Commit"
+  short_description: "Review changes, lint, split commits, and push safely"
+  default_prompt: "Use $auto-commit to follow the literal git auto-commit workflow and push safely."

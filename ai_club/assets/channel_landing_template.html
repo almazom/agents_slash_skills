@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{TITLE}}</title>
+    <style>
+      :root {
+        --paper: #f4efe4;
+        --ink: #1c1c16;
+        --muted: #675f52;
+        --panel: rgba(255, 252, 246, 0.72);
+        --line: rgba(28, 28, 22, 0.12);
+        --accent: #0f766e;
+        --accent-soft: rgba(15, 118, 110, 0.12);
+        --warm: #b45309;
+        --shadow: 0 24px 80px rgba(28, 28, 22, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.08), transparent 32rem),
+          radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.08), transparent 28rem),
+          linear-gradient(180deg, #f8f4ec 0%, var(--paper) 100%);
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+
+      .hero,
+      .panel,
+      .theme-card,
+      .link-card,
+      .timeline-card {
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background: var(--panel);
+        backdrop-filter: blur(16px);
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        overflow: hidden;
+        position: relative;
+        padding: 36px;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: auto -8% -18% auto;
+        width: 300px;
+        height: 300px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(180, 83, 9, 0.12));
+        filter: blur(10px);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 5vw, 4.8rem);
+        line-height: 0.96;
+        margin-top: 18px;
+        max-width: 10ch;
+      }
+
+      .hero p {
+        max-width: 54rem;
+        font-size: 1.05rem;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin-top: 20px;
+      }
+
+      .panel {
+        padding: 18px 20px;
+      }
+
+      .metric-label {
+        font-size: 0.78rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .metric-value {
+        margin-top: 8px;
+        font-size: 2rem;
+        font-weight: 800;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1.3fr 0.9fr;
+        gap: 20px;
+        margin-top: 20px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 20px;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .section-title span {
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .theme-list,
+      .links-list,
+      .timeline-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .theme-card,
+      .link-card,
+      .timeline-card {
+        padding: 18px;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .chip {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(28, 28, 22, 0.06);
+        font-size: 0.88rem;
+      }
+
+      .callout {
+        margin-top: 20px;
+        padding: 22px;
+        border-left: 4px solid var(--warm);
+        background: rgba(180, 83, 9, 0.08);
+        border-radius: 24px;
+      }
+
+      .mono {
+        font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="eyebrow">AI Club Landing</div>
+        <h1>{{TITLE}}</h1>
+        <p>
+          {{SUMMARY}}
+        </p>
+        <div class="hero-meta">
+          <div><strong>Channel:</strong> {{CHANNEL_NAME}}</div>
+          <div><strong>Period:</strong> {{PERIOD_LABEL}}</div>
+          <div><strong>Generated:</strong> {{GENERATED_AT}}</div>
+        </div>
+        <div class="metrics">
+          <article class="panel">
+            <div class="metric-label">Messages</div>
+            <div class="metric-value">{{METRIC_MESSAGES}}</div>
+          </article>
+          <article class="panel">
+            <div class="metric-label">Participants</div>
+            <div class="metric-value">{{METRIC_PARTICIPANTS}}</div>
+          </article>
+          <article class="panel">
+            <div class="metric-label">Links</div>
+            <div class="metric-value">{{METRIC_LINKS}}</div>
+          </article>
+          <article class="panel">
+            <div class="metric-label">Top Theme</div>
+            <div class="metric-value">{{METRIC_THEME}}</div>
+          </article>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="stack">
+          <article class="panel">
+            <div class="section-title">
+              <h2>Main Themes</h2>
+              <span>{{THEMES_LABEL}}</span>
+            </div>
+            <div class="theme-list">
+              <article class="theme-card">
+                <h3>{{THEME_1_TITLE}}</h3>
+                <p>{{THEME_1_BODY}}</p>
+                <div class="chip-row">
+                  <div class="chip">{{THEME_1_CHIP_A}}</div>
+                  <div class="chip">{{THEME_1_CHIP_B}}</div>
+                  <div class="chip">{{THEME_1_CHIP_C}}</div>
+                </div>
+              </article>
+              <article class="theme-card">
+                <h3>{{THEME_2_TITLE}}</h3>
+                <p>{{THEME_2_BODY}}</p>
+                <div class="chip-row">
+                  <div class="chip">{{THEME_2_CHIP_A}}</div>
+                  <div class="chip">{{THEME_2_CHIP_B}}</div>
+                  <div class="chip">{{THEME_2_CHIP_C}}</div>
+                </div>
+              </article>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="section-title">
+              <h2>Timeline Or Thread Focus</h2>
+              <span>{{THREAD_LABEL}}</span>
+            </div>
+            <div class="timeline-list">
+              <article class="timeline-card">
+                <h3>{{THREAD_1_TITLE}}</h3>
+                <p>{{THREAD_1_BODY}}</p>
+                <div class="mono">{{THREAD_1_META}}</div>
+              </article>
+              <article class="timeline-card">
+                <h3>{{THREAD_2_TITLE}}</h3>
+                <p>{{THREAD_2_BODY}}</p>
+                <div class="mono">{{THREAD_2_META}}</div>
+              </article>
+            </div>
+          </article>
+        </div>
+
+        <div class="stack">
+          <article class="panel">
+            <div class="section-title">
+              <h2>Links And Repos</h2>
+              <span>{{LINKS_LABEL}}</span>
+            </div>
+            <div class="links-list">
+              <article class="link-card">
+                <h3>{{LINK_1_TITLE}}</h3>
+                <p>{{LINK_1_BODY}}</p>
+                <div class="mono">{{LINK_1_URL}}</div>
+              </article>
+              <article class="link-card">
+                <h3>{{LINK_2_TITLE}}</h3>
+                <p>{{LINK_2_BODY}}</p>
+                <div class="mono">{{LINK_2_URL}}</div>
+              </article>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="section-title">
+              <h2>Insights</h2>
+              <span>{{INSIGHTS_LABEL}}</span>
+            </div>
+            <div class="callout">
+              <strong>{{INSIGHT_HEADLINE}}</strong>
+              <p>{{INSIGHT_BODY}}</p>
+            </div>
+            <div class="chip-row">
+              <div class="chip">{{INSIGHT_TAG_A}}</div>
+              <div class="chip">{{INSIGHT_TAG_B}}</div>
+              <div class="chip">{{INSIGHT_TAG_C}}</div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
