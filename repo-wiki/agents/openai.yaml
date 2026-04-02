@@ -1,0 +1,4 @@
+interface:
+  display_name: "Repo Wiki"
+  short_description: "Universal .repowiki generation and refresh workflow"
+  default_prompt: "Use $repo-wiki when the user wants to analyze, rebuild, refresh, validate, or improve a universal .repowiki structure through /home/almaz/TOOLS/repo-wiki-cli-skill."
