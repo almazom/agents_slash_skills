@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "skills": {
+    "glmocr-table": {
+      "version": "1.0.2",
+      "installedAt": 1775066200511
+    },
+    "glmv-doc-based-writing": {
+      "version": "1.0.1",
+      "installedAt": 1775066247112
+    }
+  }
+}
