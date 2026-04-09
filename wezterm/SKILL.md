@@ -70,6 +70,16 @@ If the operator expects to **see** the worker in WezTerm:
 The existence of a worker somewhere else is not enough if the request was for a
 visible right-side pane.
 
+## Spawn Success Rule
+
+`pane exists` does **not** mean `spawn succeeded`.
+
+Successful spawn requires:
+- correct pane created
+- correct tab placement
+- intended launcher started
+- first snapshot confirms activity or healthy idle state
+
 ## Mandatory Post-Spawn Diagnostics
 
 After any visible worker spawn:
@@ -104,6 +114,65 @@ After diagnostics, keep observing:
 - continue until healthy, blocked, or done
 
 Do not stop at pane creation.
+
+## Remote Mode Separation Rule
+
+Do not mix GUI-visible workflow and headless mux workflow unless you choose the
+mode explicitly first.
+
+If the request is for:
+- visible local worker: stay in GUI same-tab flow
+- persistence or detached runtime: choose mux flow
+- remote runtime locality: choose remote SSH flow
+
+Do not quietly satisfy a visible workflow request with a headless worker, and
+do not quietly switch a mux workflow back into GUI-pane assumptions.
+
+## Recipes
+
+### `spawn-visible-worker-same-tab`
+
+```bash
+MANAGER_PANE="${WEZTERM_PANE:?current pane required}"
+WORKER_ID=$(wezterm cli split-pane --pane-id "$MANAGER_PANE" --right --percent 50 -- bash -lc 'echo "WORKER READY pane=$WEZTERM_PANE"; exec bash')
+printf 'worker=%s\n' "$WORKER_ID"
+```
+
+### `spawn-worker-right-column`
+
+```bash
+RIGHT_PANE="<existing right-column pane id>"
+WORKER_ID=$(wezterm cli split-pane --bottom --pane-id "$RIGHT_PANE" --percent 40 -- bash -lc 'echo "WORKER READY pane=$WEZTERM_PANE"; exec bash')
+printf 'worker=%s\n' "$WORKER_ID"
+```
+
+### `diagnose-worker-pane`
+
+```bash
+WORKER_ID="<pane id>"
+wezterm cli list --format json | python3 - "$WORKER_ID" <<'PY'
+import json, sys
+worker_id = int(sys.argv[1])
+for pane in json.load(sys.stdin):
+    if pane["pane_id"] == worker_id:
+        print(f"pane={pane['pane_id']} tab={pane['tab_id']} left={pane['left_col']} top={pane['top_row']} title={pane['title']}")
+        break
+PY
+wezterm cli get-text --pane-id "$WORKER_ID" --start-line -40 | tail -20
+```
+
+### `observe-worker-periodically`
+
+```bash
+WORKER_ID="<pane id>"
+sleep 2
+wezterm cli get-text --pane-id "$WORKER_ID" --start-line -40 | tail -20
+
+for _ in 1 2 3; do
+  sleep 10
+  wezterm cli get-text --pane-id "$WORKER_ID" --start-line -40 | tail -20
+done
+```
 
 **Basic observer loop:**
 ```bash
@@ -176,6 +245,7 @@ When operating headless (SSH, no GUI, long-running workers), use `--prefer-mux` 
 ### Core rule
 
 Do not default to GUI-first instructions when the operator only needs: spawn, list, get-text, rename, kill.
+Do not mix this mode with same-tab GUI assumptions unless you explicitly switch modes.
 
 ### CLI map for headless
 

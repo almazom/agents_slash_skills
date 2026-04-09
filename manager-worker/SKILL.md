@@ -96,6 +96,12 @@ If the manager cannot state all four lines clearly, the task is not ready for de
 
 ## Quick Start
 
+### Manager reference files
+
+Read these reference files when the run is longer, remote, or security-sensitive:
+- `references/runtime-preflight.md`
+- `references/security-boundaries.md`
+
 ### 1. Spawn a Worker
 
 ```bash
@@ -104,6 +110,7 @@ MANAGER_PANE="${WEZTERM_PANE:?current pane required}"
 
 # For first worker, split the current manager pane to create the right column
 FIRST_WORKER=$(wezterm cli split-pane --pane-id "$MANAGER_PANE" --right --percent 50 -- bash -c 'echo "WORKER READY pane=$WEZTERM_PANE"; exec bash')
+WORKER_ID="$FIRST_WORKER"
 
 # For additional workers, split BOTTOM from the right column pane:
 NEXT_WORKER=$(wezterm cli split-pane --bottom --pane-id <right_column_pane_id> --percent 40 -- bash -c 'echo "WORKER READY pane=$WEZTERM_PANE"; exec bash')
@@ -160,6 +167,71 @@ Preferred pattern:
 Use this pattern for multi-worker reviews, long read-only audits, and any run
 where the operator may stop early but still needs reliable artifacts.
 
+### 1c. Choose transport before launch
+
+Do not treat every worker launch as the same operation.
+
+Choose one transport explicitly:
+
+| Transport | Use when | Default observation |
+|-----------|----------|---------------------|
+| `visible-local` | operator wants a visible local worker | same-tab pane snapshots, then heartbeat |
+| `same-tab-visible` | exact same-tab right-pane visibility matters and should be enforced as a contract | diagnostics must prove same-tab placement |
+| `headless-mux` | persistence matters most | mux list plus pane snapshots |
+| `remote-ssh` | runtime must live on remote host | remote pane snapshots plus heartbeat |
+
+Before launch, the manager should be able to state:
+
+```text
+TRANSPORT: visible-local | same-tab-visible | headless-mux | remote-ssh
+WHY: visibility | persistence | remote runtime locality
+OBSERVE VIA: <exact method after spawn>
+```
+
+If those lines are vague, the transport choice is still implicit and should be
+made explicit before spawning.
+
+### 1d. Runtime preflight for longer runs
+
+Before longer worker runs, especially headless or remote, check:
+1. auth state
+2. required environment presence
+3. `cwd` or intended `WORKDIR`
+4. git identity if commit or push may happen
+5. launcher health
+6. observability plan
+7. pane and tab placement when visibility matters
+
+Preflight by transport:
+
+| Transport | Required preflight focus |
+|-----------|--------------------------|
+| `visible-local` | pane placement, launcher startup, first snapshot |
+| `same-tab-visible` | current tab match, right-column placement, startup text |
+| `headless-mux` | mux naming, cwd, launcher, snapshot command |
+| `remote-ssh` | remote cwd, auth, env presence, git identity, launcher, remote observation path |
+
+Notes:
+- verify env presence without dumping raw secret values into prompts
+- verify the launcher command or script before treating a bad startup as a worker failure
+- define the exact first and next observation before the worker starts
+
+### 1e. Security boundary for agent context
+
+Do not make raw `.env` content part of normal worker context unless the task is
+explicitly about secret handling.
+
+Preferred order:
+1. vault reference
+2. pointer value
+3. injected runtime environment
+
+Avoid:
+- pasting secrets into prompts
+- storing secrets in memory or task packets
+- putting credentials into launcher text when a runtime injection path exists
+- including secret values in task-packet examples
+
 ### 2. Send Task to Worker
 
 ```bash
@@ -183,23 +255,65 @@ wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
 # Quick manual check — just read last 10 lines (status area only)
 wezterm cli get-text --pane-id 5 | tail -10
 
-# Structured heartbeat with mw-heartbeat script
-mw-heartbeat 5 30 100
+# Structured heartbeat with the skill-local script
+bin/mw-heartbeat 5 30 100
 ```
 
 ### 3a. Periodic Observability Rule
 
 After every worker spawn:
 1. do an immediate diagnostic snapshot
-2. do an initial short read within the first few seconds
-3. continue periodic observation until the worker is clearly healthy, blocked, or done
+2. do an initial short read immediately after spawn
+3. define the next snapshot in `N` seconds
+4. continue heartbeat or repeated observation until the worker is clearly healthy, blocked, or done
 
 Preferred order:
 - `wezterm cli get-text --pane-id <id> --start-line -40`
-- then `mw-heartbeat <id> <interval> <beats>` or repeated `get-text`
+- then `bin/mw-heartbeat <id> <interval> <beats>` or repeated `get-text`
 
 Do not treat "pane exists" as enough evidence. Observability must confirm both
 visibility and startup.
+
+### 3a1. Periodic observability contract
+
+Before the run starts, the manager should be able to state:
+
+```text
+FIRST SNAPSHOT: immediately after spawn
+NEXT SNAPSHOT: <N seconds>
+HEARTBEAT CADENCE: <interval or manual cadence>
+STOP CONDITIONS: healthy | blocked | done | failed startup | operator stop
+```
+
+If the manager cannot state those four lines, the observation plan is still too
+implicit.
+
+### 3b. Health taxonomy
+
+Use the following diagnoses instead of a vague "spawned" or "not spawned":
+
+| Health state | Meaning | Action |
+|--------------|---------|--------|
+| Visible but wrong tab | worker exists, but not where operator expected | repair or respawn; do not count as success |
+| Pane exists but launcher failed | pane opened, command did not start | inspect startup text and fix launcher |
+| Auth failed | runtime cannot do the requested work | surface auth issue clearly |
+| Idle | worker is alive and waiting | send next task or close run deliberately |
+| Blocked | worker waits on approval, clarification, or dependency | report block reason explicitly |
+| Running but unhealthy | activity exists, but progress quality is poor or unstable | preserve artifacts and diagnose before continuing |
+| Returned to shell | launcher finished and the pane is now a plain shell | confirm via terminal log, launcher exit marker, or artifact checks |
+
+### 3c. Startup blocker taxonomy
+
+Use these blocker names during startup instead of vague failure summaries:
+
+| Blocker | Meaning | Action |
+|---------|---------|--------|
+| Wrong tab | worker exists, but not in expected visible tab | respawn or repair placement |
+| Dead launcher | pane opened, launcher exited or never started | fix launcher before retry |
+| Missing command | runtime command is unavailable on PATH | install, adjust PATH, or change launcher |
+| Auth failure | required login or token is missing or expired | repair auth before relaunch |
+| Env missing | required runtime variable is absent | inject env safely and retry |
+| Wrong repo | worker started in the wrong repo or workdir | correct `WORKDIR` and relaunch |
 
 ## Worker States
 
@@ -217,14 +331,14 @@ visibility and startup.
 Every line must answer: "What is my worker doing?"
 Token counts are NOT shown — they are internal metrics, not business info.
 
-**Script**: `mw-heartbeat [WORKER_ID] [INTERVAL] [MAX_BEATS]`
+**Script**: `bin/mw-heartbeat [WORKER_ID] [INTERVAL] [MAX_BEATS]`
 
 ```bash
 # Observe worker 5, every 30s, up to 100 beats
-mw-heartbeat 5 30 100
+bin/mw-heartbeat 5 30 100
 
 # Quick 3-beat check
-mw-heartbeat 5 10 3
+bin/mw-heartbeat 5 10 3
 ```
 
 ### Output Format (Human-Facing)
@@ -264,11 +378,15 @@ Each line answers a human question:
 | `ERROR` in status area | 1 (after message) | Worker hit real error |
 | Same snapshot 3x | Warn inline | Worker may be stuck |
 
+If the pane has already returned to a plain shell prompt, prefer the terminal
+log, launcher exit marker, or explicit artifact checks over a heartbeat-only
+interpretation.
+
 ### Heartbeat in Background
 
 ```bash
 # Run in background, log to file
-nohup mw-heartbeat 5 30 100 > /tmp/heartbeat_w5.log 2>&1 &
+nohup bin/mw-heartbeat 5 30 100 > /tmp/heartbeat_w5.log 2>&1 &
 
 # Check latest report
 tail -20 /tmp/heartbeat_w5.log
@@ -314,6 +432,8 @@ the default; it is a decision.
 - Bias toward clearer `DONE` over maximum parallelism
 - Bias toward staged fan-out over large all-at-once fan-out
 - Bias toward manager-local synthesis when the real work is still task shaping
+- Bias toward explicit transport choice over whichever spawn command is most convenient
+- Bias toward artifact-first runs when the task is long, stoppable, or needs postmortem evidence
 
 ### Operator Routing Defaults
 
@@ -332,6 +452,10 @@ Use these defaults unless the operator explicitly overrides them.
    - if the operator reveals a stable preference, record it in docs or memory instead of leaving it only in chat
 6. **Next-step bias**
    - after finishing a subtask, name the nearest unblocked next step instead of stopping at a generic summary
+7. **Observability is mandatory**
+   - treat `spawn -> diagnostics -> startup snapshot -> periodic observation` as the minimum launch lifecycle
+8. **Secret-safe context**
+   - keep raw secrets out of normal worker prompts and prefer injected runtime env
 
 ### Preferred Routing Outcomes
 
@@ -682,7 +806,7 @@ DONE:
   - Log file is created on first call
 REFERENCES:
   - /home/pets/.local/bin/codex_wp (existing wrapper, for reference)
-  - /home/pets/TOOLS/manager_wezterm_cli/.MEMORY/0006-lessons-learned.md (Lesson 8)
+  - /home/pets/TOOLS/manager_wezterm_cli/.MEMORY/lessons/0006-lessons-learned.md (Lesson 8)
   - codex_wp review --help vs codex review --help (different output — see lesson)
 
 STOP after completing this task. Do NOT continue to other work.
@@ -719,7 +843,7 @@ Before sending any task to a worker, verify:
 - [ ] Worker pane exists and is ready (check with `wezterm cli list`)
 - [ ] If the worker is expected to be visible, it is spawned in the same tab as the manager pane
 - [ ] Immediate post-spawn diagnostics are run (`pane_id`, `tab_id`, position, startup text)
-- [ ] Periodic observability is planned (`mw-heartbeat` or repeated `get-text`)
+- [ ] Periodic observability is planned (`bin/mw-heartbeat` or repeated `get-text`)
 - [ ] For long/headless tasks, a prompt file + launcher script + log path are prepared
 - [ ] If workers will spawn subagents, the total fan-out is justified and partial-success criteria are defined
 
@@ -768,6 +892,9 @@ findings, and rerun in staged batches or with fewer subagents
 ```
 ~/.agents/skills/manager-worker/
 ├── SKILL.md              # This file
+├── references/
+│   ├── runtime-preflight.md
+│   └── security-boundaries.md
 └── bin/
     ├── mw-heartbeat      # Heartbeat observer (human-friendly)
     ├── mw-send           # Send prompt to worker
@@ -785,4 +912,4 @@ findings, and rerun in staged batches or with fewer subagents
 ## Related
 
 - `$wezterm` — pane management primitives
-- `.MEMORY/0007-lesson-1-basic-communication.md` — detailed findings
+- `.MEMORY/active/0007-lesson-1-basic-communication.md` — detailed findings
