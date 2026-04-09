@@ -1,0 +1,14 @@
+#!/bin/bash
+# Spawn new worker
+
+PERCENT=${1:-50}
+
+WORKER_ID=$(wezterm cli split-pane --right --percent "$PERCENT" -- bash -c 'echo "WORKER READY"; exec bash')
+
+if [ -z "$WORKER_ID" ]; then
+    echo "❌ Failed to create worker pane"
+    exit 1
+fi
+
+echo "✅ Worker spawned: pane $WORKER_ID"
+echo "Start codex_wp: mw-start $WORKER_ID"

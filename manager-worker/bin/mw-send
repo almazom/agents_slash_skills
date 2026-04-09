@@ -1,0 +1,24 @@
+#!/bin/bash
+# Send task to worker
+
+WORKER_ID=${1:-5}
+shift
+PROMPT="$*"
+
+if [ -z "$PROMPT" ]; then
+    echo "Usage: mw-send <worker_id> <prompt>"
+    exit 1
+fi
+
+# Clear input
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x03'
+sleep 0.2
+
+# Send prompt
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "$PROMPT"
+sleep 0.3
+
+# Submit
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+
+echo "📤 Sent to worker $WORKER_ID: $PROMPT"

@@ -1,0 +1,170 @@
+#!/bin/bash
+# Manager-Worker Heartbeat Observer — Human-Facing Edition
+# Usage: mw-heartbeat [WORKER_ID] [INTERVAL] [MAX_BEATS]
+#
+# Design principle: this output is read by a HUMAN (operator/owner),
+# not by a machine. Every line must answer: "What is my worker doing?"
+# Token counts are NOT shown — they are internal metrics, not business info.
+
+set -uo pipefail
+
+WORKER_ID=${1:-5}
+INTERVAL=${2:-30}
+MAX_BEATS=${3:-100}
+
+RST='\033[0m'
+GRN='\033[32m'
+YLW='\033[33m'
+RED='\033[31m'
+CYN='\033[36m'
+DIM='\033[2m'
+BLD='\033[1m'
+
+PREV_SNAPSHOT=""
+STUCK_COUNT=0
+
+# ─── Render one heartbeat ────────────────────────────────────────────
+render_status() {
+    local beat="$1"
+    local ts
+    ts=$(date +%H:%M:%S)
+
+    # Read full pane content
+    local content
+    content=$(wezterm cli get-text --pane-id "$WORKER_ID" 2>/dev/null) || {
+        echo -e "${RED}[${ts}] Worker ${WORKER_ID}: pane not found (killed or closed)${RST}"
+        return 1
+    }
+
+    # Bottom 10 lines = status area (for state detection)
+    local status_area
+    status_area=$(echo "$content" | tail -10)
+
+    # ── State detection (status area ONLY — code scrollback has false positives) ──
+
+    local is_working="no"
+    echo "$status_area" | grep -qP '\xe2\x80\xa2 Working|\x Working' && is_working="yes"
+    # Also try UTF-8 bullet
+    echo "$status_area" | grep -qP 'Working \(' && is_working="yes"
+
+    local work_time=""
+    work_time=$(echo "$status_area" | grep -oP 'Working \(\K[\dms]+' | tail -1)
+    # Also catch "Worked for Xm Ys"
+    [ -z "$work_time" ] && work_time=$(echo "$status_area" | grep -oP 'Worked for \K[\dms]+' | tail -1)
+
+    local has_done="no" has_error="no" has_input="no"
+    echo "$status_area" | grep -qiP 'completed|finished|✔' && has_done="yes"
+    echo "$status_area" | grep -qiP '(?:^|[^a-zA-Z_])(?:ERROR|FATAL)(?:[^a-zA-Z_]|$)' && has_error="yes"
+    echo "$status_area" | grep -qP '› ' && has_input="yes"
+
+    # ── Progress info (from full scrollback — safe to scan broadly) ──
+
+    # Card number
+    local card=""
+    card=$(echo "$content" | grep -oiP 'card\s+\d{4}' | tail -1)
+
+    # Test results
+    local tests=""
+    tests=$(echo "$content" | grep -oP '\d+ pass,?\s*\d+ fail' | tail -1)
+    local tests_alt=""
+    tests_alt=$(echo "$content" | grep -oP 'Ran \K\d+(?= tests)' | tail -1)
+    [ -n "$tests_alt" ] && tests="${tests_alt} tests passed"
+
+    # Commit hash
+    local commit=""
+    commit=$(echo "$content" | grep -oP '[0-9a-f]{40}' | tail -1)
+    [ -n "$commit" ] && commit="${commit:0:8}"
+
+    # Last meaningful action — find the last bullet line that describes what worker DID
+    # Skip "Working (Xs)" lines, we want actual action descriptions
+    local last_action=""
+    last_action=$(echo "$content" | grep -P '^\s*[•✔]' | grep -v 'Working (' | tail -1 | sed 's/^\s*//' | head -c 120)
+
+    # If no action found, try getting the "Worked for" or summary line
+    [ -z "$last_action" ] && last_action=$(echo "$content" | grep -P 'Worked for' | tail -1 | sed 's/^\s*//' | head -c 120)
+
+    # Project / directory from bottom bar
+    local project=""
+    project=$(echo "$status_area" | grep -oP '~/[\w/_-]+' | tail -1)
+
+    # ── Stuck detection ──
+    local snapshot
+    snapshot=$(echo "$status_area" | md5sum | cut -d' ' -f1)
+    if [ "$snapshot" = "$PREV_SNAPSHOT" ] && [ "$is_working" = "yes" ]; then
+        STUCK_COUNT=$((STUCK_COUNT + 1))
+    else
+        STUCK_COUNT=0
+    fi
+    PREV_SNAPSHOT="$snapshot"
+
+    # ── Determine human-readable state ──
+    local state_label state_color state_desc
+    if [ "$has_done" = "yes" ]; then
+        state_label="DONE"
+        state_color="$GRN"
+        state_desc="Task completed"
+    elif [ "$has_error" = "yes" ]; then
+        state_label="ERROR"
+        state_color="$RED"
+        state_desc="Worker encountered an error"
+    elif [ "$is_working" = "yes" ]; then
+        state_label="WORKING"
+        state_color="$CYN"
+        if [ -n "$last_action" ]; then
+            state_desc="$last_action"
+        else
+            state_desc="Processing..."
+        fi
+    elif [ "$has_input" = "yes" ]; then
+        state_label="IDLE"
+        state_color="$YLW"
+        state_desc="Waiting for instructions"
+    else
+        state_label="UNKNOWN"
+        state_color="$DIM"
+        state_desc="No readable status"
+    fi
+
+    # ── Print human-facing report ──
+    echo ""
+    echo -e "${DIM}--- #${beat}/${MAX_BEATS} [${ts}] Worker ${WORKER_ID} ---${RST}"
+    echo -e "  ${state_color}${state_label}${RST}: ${state_desc}$([ "$STUCK_COUNT" -ge 3 ] && echo -e " ${RED}(possibly stuck: ${STUCK_COUNT}x same state)${RST}")"
+
+    # What card/task
+    if [ -n "$card" ]; then
+        echo -e "  Task: ${BLD}${card}${RST}"
+    fi
+
+    # Progress indicators
+    local progress_parts=""
+    [ -n "$tests" ] && progress_parts="${progress_parts}  ${GRN}${tests}${RST}"
+    [ -n "$commit" ] && progress_parts="${progress_parts}  commit ${commit}"
+    [ -n "$work_time" ] && progress_parts="${progress_parts}  elapsed ${work_time}"
+    [ -n "$progress_parts" ] && echo -e "  Progress:${progress_parts}"
+
+    # Project
+    [ -n "$project" ] && echo -e "  Project: ${project}"
+
+    echo -e "${DIM}----------------------------${RST}"
+
+    # Return codes for loop control
+    [ "$has_done" = "yes" ] && return 10
+    [ "$has_error" = "yes" ] && return 20
+    return 0
+}
+
+# ─── Main ────────────────────────────────────────────────────────────
+echo -e "${BLD}Heartbeat started${RST} — Worker ${WORKER_ID}, every ${INTERVAL}s, max ${MAX_BEATS} beats"
+
+for beat in $(seq 1 "$MAX_BEATS"); do
+    render_status "$beat"
+    rc=$?
+
+    [ $rc -eq 1 ] && { echo -e "${RED}Worker ${WORKER_ID} pane is gone.${RST}"; exit 1; }
+    [ $rc -eq 10 ] && { echo -e "\n${GRN}Worker ${WORKER_ID} finished!${RST}"; exit 0; }
+    [ $rc -eq 20 ] && { echo -e "\n${RED}Worker ${WORKER_ID} hit an error!${RST}"; exit 1; }
+
+    sleep "$INTERVAL"
+done
+
+echo -e "\n${YLW}Stopped after ${MAX_BEATS} checks.${RST}"

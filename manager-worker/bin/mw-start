@@ -1,0 +1,9 @@
+#!/bin/bash
+# Start codex_wp in worker
+
+WORKER_ID=${1:-5}
+
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "codex_wp"$'\x0d'
+
+echo "🚀 Started codex_wp in worker $WORKER_ID"
+echo "Wait for trust prompt, then: mw-trust $WORKER_ID"

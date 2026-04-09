@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Review"
+  short_description: "Thin wrapper around raw codex review"
+  default_prompt: "Use $codex-review only when the user explicitly wants to run the local codex-review wrapper with no custom prompt and save repo-local review artifacts."

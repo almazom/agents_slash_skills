@@ -1,0 +1,728 @@
+#!/usr/bin/env python3
+"""
+zj — Zellij task runner CLI
+
+Run shell commands in floating/tiled Zellij panes, detect exit, capture output,
+send commands to existing panes. Designed for agent-driven orchestration:
+sequential chains, parallel runs, and "fire-and-subscribe" patterns.
+
+Usage:
+    zj run "cmd"                      # block until exit, return exit code
+    zj run "cmd" --detach             # spawn and return pane_id immediately
+    zj run "cmd" --tiled              # tiled pane instead of floating
+    zj wait <pane_id>                 # wait for detached pane to exit
+    zj send <pane_id> "text"          # send text to a pane
+    zj send <pane_id> "cmd" --enter   # send text + Enter
+    zj keys <pane_id> "Ctrl c"        # send key combo
+    zj close <pane_id>                # close pane by ID
+    zj tiled "cmd"                    # create tiled pane (direction flags)
+    zj chain "cmd1" "cmd2" "cmd3"     # sequential, stop on first failure
+    zj parallel "cmd1" "cmd2" "cmd3"  # run all, wait for all, report results
+    zj watch <pane_id>                # watch existing pane until exit
+    zj list                           # show active tracked panes
+    zj capture <pane_id>              # dump pane output to stdout
+    zj floats [show|hide|toggle]      # manage floating pane visibility
+    zj cleanup                        # remove stale tracked entries
+
+Exit codes:
+    0   — success
+    1   — command failed (non-zero exit) or pane gone
+    2   — timeout
+    10+ — CLI usage errors
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import uuid
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+DEFAULT_POLL_INTERVAL = 0.25   # seconds
+DEFAULT_TIMEOUT = 300          # seconds (5 min)
+DEFAULT_WIDTH = "70%"
+DEFAULT_HEIGHT = "60%"
+STATE_DIR = os.path.expanduser("~/.local/state/zj")
+os.makedirs(STATE_DIR, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _zellij(*args, timeout=10) -> subprocess.CompletedProcess:
+    """Run a zellij CLI command, return CompletedProcess."""
+    return subprocess.run(
+        ["zellij"] + list(args),
+        capture_output=True, text=True, timeout=timeout
+    )
+
+def list_panes_json() -> list[dict]:
+    """Get current session panes as list of dicts."""
+    r = _zellij("action", "list-panes", "--json", "--all", "--state", timeout=5)
+    if r.returncode != 0:
+        return []
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return []
+
+def find_pane_by_name(name: str) -> dict | None:
+    """Find a pane by its title/name."""
+    for p in list_panes_json():
+        if p.get("title") == name:
+            return p
+    return None
+
+def find_pane_by_id(num_id: int) -> dict | None:
+    """Find a pane by numeric id."""
+    for p in list_panes_json():
+        if p.get("id") == num_id:
+            return p
+    return None
+
+def parse_pane_id(raw: str) -> int:
+    """Extract numeric ID from 'terminal_12', bare '12', or multi-line output."""
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if line.startswith("terminal_"):
+            return int(line.split("_")[1])
+        try:
+            return int(line)
+        except ValueError:
+            continue
+    raise ValueError(f"Cannot parse pane ID from: {raw!r}")
+
+def poll_until_exit(pane_num: int, interval: float = DEFAULT_POLL_INTERVAL,
+                    timeout: float = DEFAULT_TIMEOUT) -> dict:
+    """
+    Poll a pane until it exits or disappears.
+    Returns dict: {status: "exited"|"gone"|"timeout", exit_code: int|None, title: str|None}
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        pane = find_pane_by_id(pane_num)
+        if pane is None:
+            return {"status": "gone", "exit_code": None, "title": None}
+        if pane.get("exited"):
+            code = pane.get("exit_status")
+            return {"status": "exited", "exit_code": code, "title": pane.get("title")}
+        time.sleep(interval)
+    return {"status": "timeout", "exit_code": None, "title": None}
+
+def close_pane_by_id(pane_num: int) -> bool:
+    """Close a specific pane by ID. Returns True if successful."""
+    r = _zellij("action", "close-pane", "--pane-id", str(pane_num), timeout=5)
+    return r.returncode == 0
+
+def close_focused_pane() -> bool:
+    """Close the currently focused pane."""
+    r = _zellij("action", "close-pane", timeout=5)
+    return r.returncode == 0
+
+def dump_pane_output(pane_num: int) -> str:
+    """Capture pane viewport + scrollback content."""
+    r = _zellij("action", "dump-screen", "--pane-id", str(pane_num), "--full",
+                timeout=5)
+    return r.stdout if r.returncode == 0 else ""
+
+def send_text(pane_num: int, text: str) -> bool:
+    """Write characters to a specific pane."""
+    r = _zellij("action", "write-chars", "--pane-id", str(pane_num), text, timeout=5)
+    return r.returncode == 0
+
+def send_keys(pane_num: int, *keys: str) -> bool:
+    """Send key combos (e.g., "Ctrl c", "Enter", "F1") to a specific pane."""
+    r = _zellij("action", "send-keys", "--pane-id", str(pane_num), *keys, timeout=5)
+    return r.returncode == 0
+
+def send_enter(pane_num: int) -> bool:
+    """Press Enter in a specific pane."""
+    return send_keys(pane_num, "Enter")
+
+def generate_name(prefix: str = "zj") -> str:
+    """Generate a unique pane name."""
+    return f"{prefix}-{uuid.uuid4().hex[:6]}"
+
+# ---------------------------------------------------------------------------
+# State tracking (for detached panes)
+# ---------------------------------------------------------------------------
+
+state_file = os.path.join(STATE_DIR, "tracked.json")
+
+def load_tracked() -> dict:
+    if os.path.exists(state_file):
+        try:
+            with open(state_file) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+def save_tracked(data: dict):
+    with open(state_file, "w") as f:
+        json.dump(data, f, indent=2)
+
+def track_pane(pane_num: int, name: str, cmd: str):
+    tracked = load_tracked()
+    tracked[str(pane_num)] = {
+        "name": name,
+        "cmd": cmd,
+        "started_at": time.time(),
+        "session": os.environ.get("ZELLIJ_SESSION", "unknown"),
+    }
+    save_tracked(tracked)
+
+def untrack_pane(pane_num: int):
+    tracked = load_tracked()
+    tracked.pop(str(pane_num), None)
+    save_tracked(tracked)
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+def cmd_run(args):
+    """Run a command in a pane and wait for exit (or detach)."""
+    name = args.name or generate_name()
+    is_floating = not args.tiled
+    width = args.width or DEFAULT_WIDTH
+    height = args.height or DEFAULT_HEIGHT
+
+    # Build zellij run command
+    zellij_args = ["run", "--name", name]
+    if is_floating:
+        zellij_args.append("--floating")
+        zellij_args += ["--width", width, "--height", height]
+        if args.x is not None:
+            zellij_args += ["--x", args.x]
+        if args.y is not None:
+            zellij_args += ["--y", args.y]
+    else:
+        # Tiled pane
+        direction = args.direction or "right"
+        zellij_args += ["--direction", direction]
+    if args.cwd:
+        zellij_args += ["--cwd", args.cwd]
+    zellij_args += ["--"] + args.command
+
+    r = _zellij(*zellij_args, timeout=10)
+    pane_id_raw = r.stdout.strip()
+    if not pane_id_raw or not pane_id_raw.startswith("terminal_"):
+        print(f"ERROR: failed to create pane: {r.stderr}", file=sys.stderr)
+        sys.exit(11)
+
+    pane_num = parse_pane_id(pane_id_raw)
+    if not args.quiet:
+        kind = "FLOAT" if is_floating else f"TILED({args.direction or 'right'})"
+        print(f"PANE {pane_id_raw} name={name} kind={kind}", file=sys.stderr)
+
+    if args.detach:
+        track_pane(pane_num, name, " ".join(args.command))
+        print(pane_id_raw)  # stdout for machine parsing
+        return
+
+    # Wait for exit
+    track_pane(pane_num, name, " ".join(args.command))
+    result = poll_until_exit(pane_num, timeout=args.timeout)
+
+    # Capture output before closing
+    output = ""
+    if result["status"] == "exited":
+        output = dump_pane_output(pane_num)
+        close_pane_by_id(pane_num)
+
+    untrack_pane(pane_num)
+
+    # Report
+    if not args.quiet:
+        if result["status"] == "exited":
+            code = result["exit_code"] if result["exit_code"] is not None else 0
+            sym = "✓" if code == 0 else "✗"
+            print(f"{sym} {name} — exit {code}", file=sys.stderr)
+        elif result["status"] == "gone":
+            print(f"! {name} — pane removed", file=sys.stderr)
+        elif result["status"] == "timeout":
+            print(f"⏱ {name} — timeout after {args.timeout}s", file=sys.stderr)
+
+    if args.dump_output:
+        if output:
+            print(output)
+        else:
+            print("(no output captured)", file=sys.stderr)
+
+    # Exit code
+    if result["status"] == "exited":
+        sys.exit(result["exit_code"] if result["exit_code"] is not None else 0)
+    elif result["status"] == "gone":
+        sys.exit(1)
+    else:
+        sys.exit(2)
+
+
+def cmd_tiled(args):
+    """Create a tiled pane (alias for zj run --tiled)."""
+    args.tiled = True
+    if not hasattr(args, 'detach'):
+        args.detach = False
+    if not hasattr(args, 'width'):
+        args.width = None
+    if not hasattr(args, 'height'):
+        args.height = None
+    if not hasattr(args, 'x'):
+        args.x = None
+    if not hasattr(args, 'y'):
+        args.y = None
+    if not hasattr(args, 'dump_output'):
+        args.dump_output = False
+    cmd_run(args)
+
+
+def cmd_send(args):
+    """Send text/command to an existing pane."""
+    pane_num = parse_pane_id(args.pane_id)
+    text = args.text
+    ok = send_text(pane_num, text)
+    if not ok:
+        print(f"ERROR: failed to send text to pane {pane_num}", file=sys.stderr)
+        sys.exit(11)
+    if args.enter:
+        time.sleep(0.05)
+        send_enter(pane_num)
+    if not args.quiet:
+        label = f'"{text}" + Enter' if args.enter else f'"{text}"'
+        print(f"→ pane {pane_num}: {label}", file=sys.stderr)
+
+
+def cmd_keys(args):
+    """Send key combos to an existing pane."""
+    pane_num = parse_pane_id(args.pane_id)
+    ok = send_keys(pane_num, *args.keys)
+    if not ok:
+        print(f"ERROR: failed to send keys to pane {pane_num}", file=sys.stderr)
+        sys.exit(11)
+    if not args.quiet:
+        print(f"→ pane {pane_num}: keys {' '.join(args.keys)}", file=sys.stderr)
+
+
+def cmd_close(args):
+    """Close pane(s) by ID."""
+    for pid_raw in args.pane_ids:
+        pane_num = parse_pane_id(pid_raw)
+        ok = close_pane_by_id(pane_num)
+        if not args.quiet:
+            if ok:
+                print(f"✗ pane {pane_num}: closed", file=sys.stderr)
+            else:
+                print(f"! pane {pane_num}: close failed", file=sys.stderr)
+
+
+def cmd_floats(args):
+    """Manage floating pane visibility."""
+    action = args.action or "toggle"
+    if action == "show":
+        _zellij("action", "show-floating-panes", timeout=5)
+        if not args.quiet:
+            print("↑ floating panes shown", file=sys.stderr)
+    elif action == "hide":
+        _zellij("action", "hide-floating-panes", timeout=5)
+        if not args.quiet:
+            print("↓ floating panes hidden", file=sys.stderr)
+    elif action == "toggle":
+        _zellij("action", "toggle-floating-panes", timeout=5)
+        if not args.quiet:
+            print("↕ floating panes toggled", file=sys.stderr)
+    else:
+        print(f"Unknown action: {action}. Use show|hide|toggle", file=sys.stderr)
+        sys.exit(10)
+
+
+def cmd_wait(args):
+    """Wait for a detached pane to exit."""
+    pane_num = parse_pane_id(args.pane_id)
+    if not args.quiet:
+        print(f"Waiting for pane {pane_num}...", file=sys.stderr)
+
+    result = poll_until_exit(pane_num, timeout=args.timeout)
+
+    if result["status"] == "exited":
+        output = dump_pane_output(pane_num)
+        close_pane_by_id(pane_num)
+        untrack_pane(pane_num)
+        code = result["exit_code"] if result["exit_code"] is not None else 0
+        if not args.quiet:
+            sym = "✓" if code == 0 else "✗"
+            print(f"{sym} pane {pane_num} — exit {code}", file=sys.stderr)
+        if args.dump_output:
+            print(output)
+        sys.exit(code)
+    elif result["status"] == "gone":
+        untrack_pane(pane_num)
+        if not args.quiet:
+            print(f"! pane {pane_num} — gone", file=sys.stderr)
+        sys.exit(1)
+    else:
+        if not args.quiet:
+            print(f"⏱ pane {pane_num} — timeout", file=sys.stderr)
+        sys.exit(2)
+
+
+def cmd_chain(args):
+    """Run commands sequentially, stop on first failure."""
+    commands = args.commands
+    total = len(commands)
+    failed_at = None
+
+    for i, cmd in enumerate(commands, 1):
+        name = args.name or generate_name("chain")
+        label = f"[{i}/{total}]"
+        if not args.quiet:
+            print(f"{label} Starting: {cmd}", file=sys.stderr)
+
+        zellij_args = [
+            "run", "--floating", "--name", name,
+            "--width", args.width or DEFAULT_WIDTH,
+            "--height", args.height or DEFAULT_HEIGHT,
+            "--", "bash", "-c", cmd,
+        ]
+        if args.cwd:
+            zellij_args.insert(-3, "--cwd")
+            zellij_args.insert(-3, args.cwd)
+
+        r = _zellij(*zellij_args, timeout=10)
+        pane_id_raw = r.stdout.strip()
+        if not pane_id_raw.startswith("terminal_"):
+            print(f"ERROR: failed to spawn: {r.stderr}", file=sys.stderr)
+            failed_at = i
+            break
+
+        pane_num = parse_pane_id(pane_id_raw)
+        track_pane(pane_num, name, cmd)
+        result = poll_until_exit(pane_num, timeout=args.timeout)
+
+        if result["status"] == "exited":
+            code = result["exit_code"] if result["exit_code"] is not None else 0
+            output = dump_pane_output(pane_num)
+            close_pane_by_id(pane_num)
+            untrack_pane(pane_num)
+            if not args.quiet:
+                sym = "✓" if code == 0 else "✗"
+                print(f"{label} {sym} exit {code}", file=sys.stderr)
+            if args.dump_output and output:
+                print(output)
+            if code != 0:
+                failed_at = i
+                break
+        else:
+            untrack_pane(pane_num)
+            if not args.quiet:
+                print(f"{label} ! pane gone or timeout", file=sys.stderr)
+            failed_at = i
+            break
+
+    if failed_at:
+        print(f"CHAIN FAILED at step {failed_at}/{total}", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"CHAIN OK — {total}/{total} completed", file=sys.stderr)
+        sys.exit(0)
+
+
+def cmd_parallel(args):
+    """Run commands in parallel, wait for all, report results."""
+    commands = args.commands
+    total = len(commands)
+
+    # Spawn all panes
+    panes = []  # (pane_num, name, cmd)
+    for i, cmd in enumerate(commands):
+        name = f"par-{i+1}"
+        zellij_args = [
+            "run", "--floating", "--name", name,
+            "--width", args.width or DEFAULT_WIDTH,
+            "--height", args.height or DEFAULT_HEIGHT,
+            "--", "bash", "-c", cmd,
+        ]
+        if args.cwd:
+            zellij_args.insert(-3, "--cwd")
+            zellij_args.insert(-3, args.cwd)
+
+        r = _zellij(*zellij_args, timeout=10)
+        pane_id_raw = r.stdout.strip()
+        if not pane_id_raw.startswith("terminal_"):
+            print(f"ERROR: failed to spawn cmd {i+1}: {r.stderr}", file=sys.stderr)
+            continue
+        pane_num = parse_pane_id(pane_id_raw)
+        track_pane(pane_num, name, cmd)
+        panes.append((pane_num, name, cmd))
+        if not args.quiet:
+            print(f"Spawned [{i+1}/{total}]: {cmd}", file=sys.stderr)
+
+    if not args.quiet:
+        print(f"Waiting for {len(panes)} panes...", file=sys.stderr)
+
+    # Poll all until all done
+    results = {}  # pane_num -> {status, exit_code, output}
+    remaining = set(p[0] for p in panes)
+    deadline = time.time() + args.timeout
+
+    while remaining and time.time() < deadline:
+        done_this_round = set()
+        for pane_num in remaining:
+            pane = find_pane_by_id(pane_num)
+            if pane is None:
+                results[pane_num] = {"status": "gone", "exit_code": None, "output": ""}
+                done_this_round.add(pane_num)
+            elif pane.get("exited"):
+                code = pane.get("exit_status")
+                output = dump_pane_output(pane_num)
+                close_pane_by_id(pane_num)
+                results[pane_num] = {"status": "exited", "exit_code": code, "output": output}
+                done_this_round.add(pane_num)
+        remaining -= done_this_round
+        if not remaining:
+            break
+        time.sleep(DEFAULT_POLL_INTERVAL)
+
+    # Handle timeout
+    for pane_num in remaining:
+        results[pane_num] = {"status": "timeout", "exit_code": None, "output": ""}
+        untrack_pane(pane_num)
+
+    # Report
+    failures = 0
+    for pane_num, name, cmd in panes:
+        r = results.get(pane_num, {"status": "unknown"})
+        untrack_pane(pane_num)
+        if r["status"] == "exited":
+            code = r["exit_code"] if r["exit_code"] is not None else 0
+            sym = "✓" if code == 0 else "✗"
+            print(f"  {sym} {name}: exit {code} — {cmd}", file=sys.stderr)
+            if code != 0:
+                failures += 1
+            if args.dump_output and r.get("output"):
+                print(f"    --- {name} output ---")
+                print(r["output"])
+        else:
+            print(f"  ! {name}: {r['status']} — {cmd}", file=sys.stderr)
+            failures += 1
+
+    if failures:
+        print(f"PARALLEL: {total - failures}/{total} OK, {failures} FAILED", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print(f"PARALLEL: {total}/{total} OK", file=sys.stderr)
+        sys.exit(0)
+
+
+def cmd_watch(args):
+    """Watch an existing pane until it exits."""
+    pane_num = parse_pane_id(args.pane_id)
+    if not args.quiet:
+        print(f"Watching pane {pane_num}...", file=sys.stderr)
+
+    result = poll_until_exit(pane_num, timeout=args.timeout)
+
+    if result["status"] == "exited":
+        code = result["exit_code"] if result["exit_code"] is not None else 0
+        if not args.quiet:
+            sym = "✓" if code == 0 else "✗"
+            print(f"{sym} pane {pane_num} ({result['title']}) — exit {code}", file=sys.stderr)
+        sys.exit(code)
+    elif result["status"] == "gone":
+        if not args.quiet:
+            print(f"! pane {pane_num} — gone", file=sys.stderr)
+        sys.exit(1)
+    else:
+        if not args.quiet:
+            print(f"⏱ pane {pane_num} — timeout", file=sys.stderr)
+        sys.exit(2)
+
+
+def cmd_list(args):
+    """List tracked/active panes."""
+    tracked = load_tracked()
+    if not tracked:
+        print("No tracked panes.", file=sys.stderr)
+        return
+
+    print(f"{'ID':>10}  {'STATUS':>10}  {'KIND':>8}  {'NAME':<20}  {'CMD'}", file=sys.stderr)
+    print("-" * 80, file=sys.stderr)
+    for pid_str, info in sorted(tracked.items(), key=lambda x: int(x[0])):
+        pid = int(pid_str)
+        pane = find_pane_by_id(pid)
+        if pane is None:
+            status = "GONE"
+            kind = "?"
+        else:
+            kind = "FLOAT" if pane.get("is_floating") else "TILED"
+            if pane.get("exited"):
+                status = f"exit={pane.get('exit_status')}"
+            else:
+                status = "RUNNING"
+        print(f"{pid:>10}  {status:>10}  {kind:>8}  {info['name']:<20}  {info['cmd'][:40]}", file=sys.stderr)
+
+
+def cmd_capture(args):
+    """Dump pane output to stdout."""
+    pane_num = parse_pane_id(args.pane_id)
+    output = dump_pane_output(pane_num)
+    if output:
+        print(output, end="")
+    else:
+        print(f"No output from pane {pane_num}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_cleanup(args):
+    """Remove stale tracked entries."""
+    tracked = load_tracked()
+    active_panes = list_panes_json()
+    active_ids = {p["id"] for p in active_panes}
+
+    removed = 0
+    for pid_str in list(tracked.keys()):
+        if int(pid_str) not in active_ids:
+            del tracked[pid_str]
+            removed += 1
+
+    save_tracked(tracked)
+    print(f"Cleaned up {removed} stale entries.", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    p = argparse.ArgumentParser(
+        prog="zj",
+        description="Zellij task runner — floating/tiled panes with exit detection",
+    )
+    p.add_argument("-q", "--quiet", action="store_true", help="suppress status messages (global)")
+
+    sub = p.add_subparsers(dest="command")
+
+    # zj run
+    run_p = sub.add_parser("run", help="Run command in a pane (floating by default)")
+    run_p.add_argument("command", nargs="+", help="command to run")
+    run_p.add_argument("--name", "-n", help="pane name")
+    run_p.add_argument("--width", "-w", help=f"pane width (default: {DEFAULT_WIDTH})")
+    run_p.add_argument("--height", help=f"pane height (default: {DEFAULT_HEIGHT})")
+    run_p.add_argument("--x", help="x position (floating)")
+    run_p.add_argument("--y", help="y position (floating)")
+    run_p.add_argument("--cwd", help="working directory")
+    run_p.add_argument("--tiled", action="store_true", help="create tiled pane instead of floating")
+    run_p.add_argument("--direction", "-d", choices=["right", "down", "left", "up"],
+                       help="split direction for tiled panes (default: right)")
+    run_p.add_argument("--detach", action="store_true",
+                       help="spawn and return immediately (prints pane_id)")
+    run_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT,
+                       help=f"max wait time in seconds (default: {DEFAULT_TIMEOUT})")
+    run_p.add_argument("--dump-output", "-o", action="store_true",
+                       help="dump pane output after exit")
+    run_p.add_argument("--quiet", "-q", action="store_true", help="suppress status messages")
+    run_p.set_defaults(func=cmd_run)
+
+    # zj tiled
+    tiled_p = sub.add_parser("tiled", help="Create tiled pane (alias: zj run --tiled)")
+    tiled_p.add_argument("command", nargs="+", help="command to run")
+    tiled_p.add_argument("--name", "-n", help="pane name")
+    tiled_p.add_argument("--direction", "-d", choices=["right", "down", "left", "up"],
+                         default="right", help="split direction (default: right)")
+    tiled_p.add_argument("--cwd", help="working directory")
+    tiled_p.add_argument("--detach", action="store_true", help="detach mode")
+    tiled_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT)
+    tiled_p.add_argument("--dump-output", "-o", action="store_true")
+    tiled_p.add_argument("--quiet", "-q", action="store_true")
+    tiled_p.set_defaults(func=cmd_tiled)
+
+    # zj send
+    send_p = sub.add_parser("send", help="Send text/command to an existing pane")
+    send_p.add_argument("pane_id", help="pane ID (terminal_N or N)")
+    send_p.add_argument("text", help="text to send")
+    send_p.add_argument("--enter", "-e", action="store_true",
+                        help="press Enter after sending text")
+    send_p.add_argument("--quiet", "-q", action="store_true")
+    send_p.set_defaults(func=cmd_send)
+
+    # zj keys
+    keys_p = sub.add_parser("keys", help="Send key combos to a pane")
+    keys_p.add_argument("pane_id", help="pane ID (terminal_N or N)")
+    keys_p.add_argument("keys", nargs="+", help='key combos (e.g., "Ctrl c" "Enter")')
+    keys_p.add_argument("--quiet", "-q", action="store_true")
+    keys_p.set_defaults(func=cmd_keys)
+
+    # zj close
+    close_p = sub.add_parser("close", help="Close pane(s) by ID")
+    close_p.add_argument("pane_ids", nargs="+", help="pane ID(s) to close")
+    close_p.add_argument("--quiet", "-q", action="store_true")
+    close_p.set_defaults(func=cmd_close)
+
+    # zj floats
+    floats_p = sub.add_parser("floats", help="Manage floating pane visibility")
+    floats_p.add_argument("action", nargs="?", choices=["show", "hide", "toggle"],
+                          default="toggle", help="action (default: toggle)")
+    floats_p.add_argument("--quiet", "-q", action="store_true")
+    floats_p.set_defaults(func=cmd_floats)
+
+    # zj wait
+    wait_p = sub.add_parser("wait", help="Wait for a detached pane to exit")
+    wait_p.add_argument("pane_id", help="pane ID (terminal_N or N)")
+    wait_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT)
+    wait_p.add_argument("--dump-output", "-o", action="store_true")
+    wait_p.add_argument("--quiet", "-q", action="store_true")
+    wait_p.set_defaults(func=cmd_wait)
+
+    # zj chain
+    chain_p = sub.add_parser("chain", help="Run commands sequentially")
+    chain_p.add_argument("commands", nargs="+", help="commands to run")
+    chain_p.add_argument("--name", "-n", help="pane name prefix")
+    chain_p.add_argument("--width", "-w", default=DEFAULT_WIDTH)
+    chain_p.add_argument("--height", default=DEFAULT_HEIGHT)
+    chain_p.add_argument("--cwd", help="working directory")
+    chain_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT)
+    chain_p.add_argument("--dump-output", "-o", action="store_true")
+    chain_p.add_argument("--quiet", "-q", action="store_true")
+    chain_p.set_defaults(func=cmd_chain)
+
+    # zj parallel
+    par_p = sub.add_parser("parallel", help="Run commands in parallel")
+    par_p.add_argument("commands", nargs="+", help="commands to run")
+    par_p.add_argument("--width", "-w", default=DEFAULT_WIDTH)
+    par_p.add_argument("--height", default=DEFAULT_HEIGHT)
+    par_p.add_argument("--cwd", help="working directory")
+    par_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT)
+    par_p.add_argument("--dump-output", "-o", action="store_true")
+    par_p.add_argument("--quiet", "-q", action="store_true")
+    par_p.set_defaults(func=cmd_parallel)
+
+    # zj watch
+    watch_p = sub.add_parser("watch", help="Watch existing pane until exit")
+    watch_p.add_argument("pane_id", help="pane ID (terminal_N or N)")
+    watch_p.add_argument("--timeout", "-t", type=float, default=DEFAULT_TIMEOUT)
+    watch_p.add_argument("--quiet", "-q", action="store_true")
+    watch_p.set_defaults(func=cmd_watch)
+
+    # zj list
+    list_p = sub.add_parser("list", help="List tracked panes")
+    list_p.set_defaults(func=cmd_list)
+
+    # zj capture
+    cap_p = sub.add_parser("capture", help="Dump pane output")
+    cap_p.add_argument("pane_id", help="pane ID (terminal_N or N)")
+    cap_p.set_defaults(func=cmd_capture)
+
+    # zj cleanup
+    clean_p = sub.add_parser("cleanup", help="Remove stale tracked entries")
+    clean_p.set_defaults(func=cmd_cleanup)
+
+    args = p.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Skill"
+  short_description: "Three-layer implementation-plan pipeline"
+  default_prompt: "Use $plan-skill when the user wants a planning-first workflow that produces one canonical IMPLEMENTATION_PLAN.md through plan, self-QA, and quality-loop stages."

@@ -1,0 +1,9 @@
+#!/bin/bash
+# Confirm trust in codex_wp
+
+WORKER_ID=${1:-5}
+
+sleep 1
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "1"$'\x0d'
+
+echo "✅ Trust confirmed for worker $WORKER_ID"

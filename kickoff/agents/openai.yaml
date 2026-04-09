@@ -1,0 +1,7 @@
+interface:
+  display_name: "Kickoff"
+  short_description: "Run managed long-running Codex sessions"
+  default_prompt: "Use $kickoff to run or resume /home/pets/TOOLS/kickoff_slash/kickoff-sdk for this repo with --max-turns, optional --goal, optional --thread-id, and optional --mattermost."
+
+policy:
+  allow_implicit_invocation: false
