@@ -5,6 +5,11 @@ description: Run a strict SDD QA wall interview before implementation with confi
 
 # SDD QA Wall
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀🛡️ [skill:sdd-qa-wall] ON ...`, `🛠️🛡️ [skill:sdd-qa-wall] STEP ...`, and `✅🛡️ [skill:sdd-qa-wall] DONE ...`.
+
 ## Overview
 
 Create a hard requirements gate between user request and implementation.

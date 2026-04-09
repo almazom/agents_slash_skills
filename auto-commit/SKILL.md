@@ -11,7 +11,7 @@ Treat the source text below as the canonical workflow. Keep it word-for-word and
 
 - Follow the governing `AGENTS.md` skill-trace contract when one exists.
 - Use the examples in this section only as fallback when no governing `AGENTS.md` defines skill-trace formatting.
-- Fallback examples: `🚀🟠 [skill:auto-commit] ON ...`, `🛠️🟠 [skill:auto-commit] STEP ...`, `⛔🟥 [skill:auto-commit] BLOCKED ...`, and `✅🟠 [skill:auto-commit] DONE ...`.
+- Fallback examples: `🚀✅ [skill:auto-commit] ON ...`, `🛠️✅ [skill:auto-commit] STEP ...`, `⛔✅ [skill:auto-commit] BLOCKED ...`, and `✅✅ [skill:auto-commit] DONE ...`.
 
 ## Non-Stop Continuation Rule
 
@@ -35,6 +35,7 @@ Treat the source text below as the canonical workflow. Keep it word-for-word and
 ## Apply the source text
 
 - Start with `git status` in a bash shell.
+- If `git status` says the directory is not a git repository and the user wants everything committed or published, run `git init` in the current directory first and continue the workflow instead of stopping on that condition.
 - Read all changes before deciding commit groups.
 - Commit everything currently relevant in `git status`.
 - Use atomic commits.
@@ -44,7 +45,23 @@ Treat the source text below as the canonical workflow. Keep it word-for-word and
 - Match commit message style to repository history.
 - Use imperative mood and keep commit subjects within 72 characters.
 - Push with GitHub CLI and inspect `gh --help` if the remote flow is unclear or missing.
+- If the user explicitly wants a remote and push, treat missing git setup as work to do:
+  - initialize the repo with `git init`
+  - prefer branch `main`
+  - create the remote with `gh repo create <repo-name> --source=. --remote=origin --push` or an equivalent non-interactive GitHub CLI flow
 - If no remote exists and the user did not ask to publish the repository, finish the local commit workflow, report that push was not applicable, and do not fabricate a remote-creation flow.
+
+## TypeScript / Bun checks
+
+- For TypeScript repositories, treat `bunx tsc --noEmit` as a default static check even when no explicit lint script exists.
+- For Bun applications, run the repository build step after typecheck.
+- Prefer `bun run build` when the project defines a build script.
+- If no build script exists but the repo uses a direct Bun entry build, use `bun build --target bun src/index.ts --outdir dist`.
+- Run focused tests for the touched scope before commit.
+- Prefer `bun test <targeted files>` when the change is narrow.
+- Use full `bun test` when the repo is stable enough for it or when the change scope is broad.
+- If explicit repo lint or check scripts exist, run those first and use the commands above to fill the gaps.
+- If repo-wide `tsc` or full tests fail due to clearly pre-existing unrelated issues, report that explicitly and do not imply the current change caused all failures.
 
 ## Communication rules
 
@@ -58,3 +75,4 @@ Treat the source text below as the canonical workflow. Keep it word-for-word and
 
 - Follow the canonical source text unless it conflicts with higher-priority instructions, repository safety, or an explicit user correction in the current turn.
 - For local-only pilot repositories or unpublished scratch worktrees, treat "push" as optional follow-up rather than a hard requirement unless the user explicitly asks to publish.
+- If the user explicitly says to publish everything, missing `.git` or missing `origin` is not a blocker by itself; bootstrap the repository and remote safely, then continue to commit and push.

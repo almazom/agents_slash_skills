@@ -7,6 +7,11 @@ description: Read-only observability and analytics skill only for Denis Kiselev'
 
 Use this skill for DEKSDEN observability.
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀📖 [skill:kiselev-read] ON ...`, `🛠️📖 [skill:kiselev-read] STEP ...`, and `✅📖 [skill:kiselev-read] DONE ...`.
+
 This skill is strictly read-only.
 
 - Never send Telegram messages.

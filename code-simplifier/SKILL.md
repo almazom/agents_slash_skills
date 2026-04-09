@@ -12,7 +12,7 @@ When this skill is active, make that visible in the user-facing trace:
 
 - Follow the governing `AGENTS.md` skill-trace contract when one exists.
 - Use the examples in this section only as fallback when no governing `AGENTS.md` defines skill-trace formatting.
-- Fallback examples: `🚀🧩 [skill:code-simplifier] ON ...`, `🛠️🧩 [skill:code-simplifier] STEP ...`, and `✅🧩 [skill:code-simplifier] DONE ...`.
+- Fallback examples: `🚀💎 [skill:code-simplifier] ON ...`, `🛠️💎 [skill:code-simplifier] STEP ...`, and `✅💎 [skill:code-simplifier] DONE ...`.
 - Keep these trace lines short, concrete, and tied to actual work rather than generic narration.
 
 ## Non-Stop Continuation Rule

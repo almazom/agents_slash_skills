@@ -15,7 +15,7 @@ When this skill is active, make that visible in the user-facing trace:
 
 - Follow the governing `AGENTS.md` skill-trace contract when one exists.
 - Use the examples in this section only as fallback when no governing `AGENTS.md` defines skill-trace formatting.
-- Fallback examples: `🚀🟫 [skill:consistency-codebase] ON ...`, `🛠️🟫 [skill:consistency-codebase] STEP ...`, and `✅🟫 [skill:consistency-codebase] DONE ...`.
+- Fallback examples: `🚀🔗 [skill:consistency-codebase] ON ...`, `🛠️🔗 [skill:consistency-codebase] STEP ...`, and `✅🔗 [skill:consistency-codebase] DONE ...`.
 - Keep these trace lines short and tied to actual normalization, review, or installation work.
 
 ## Non-Stop Continuation Rule

@@ -7,6 +7,11 @@ description: Helps users discover and install agent skills when they ask questio
 
 This skill helps you discover and install skills from the open agent skills ecosystem.
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀🧲 [skill:find-skills] ON ...`, `🛠️🧲 [skill:find-skills] STEP ...`, and `✅🧲 [skill:find-skills] DONE ...`.
+
 ## When to Use This Skill
 
 Use this skill when the user:

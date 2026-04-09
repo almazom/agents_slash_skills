@@ -7,6 +7,11 @@ allowed-tools: Bash
 
 # Git Commit with Conventional Commits
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀💾 [skill:git-commit] ON ...`, `🛠️💾 [skill:git-commit] STEP ...`, and `✅💾 [skill:git-commit] DONE ...`.
+
 ## Overview
 
 Create standardized, semantic git commits using the Conventional Commits specification. Analyze the actual diff to determine appropriate type, scope, and message.
