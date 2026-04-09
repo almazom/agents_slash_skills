@@ -14,6 +14,11 @@ metadata:
 
 Handle the request directly. Do NOT spawn sub-agents. Always write the output file the user requests.
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀🖨️ [skill:minimax-xlsx] ON ...`, `🛠️🖨️ [skill:minimax-xlsx] STEP ...`, and `✅🖨️ [skill:minimax-xlsx] DONE ...`.
+
 ## Task Routing
 
 | Task | Method | Guide |

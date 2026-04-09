@@ -3,18 +3,18 @@
 Build a package from a Markdown implementation plan:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli build \
   --plan /abs/path/IMPLEMENTATION_PLAN.md \
   --output-root /abs/path/generated \
-  --templates-root /home/pets/TOOLS/split_to_tasks_skill_cli/templates/trello \
+  --templates-root /home/almaz/TOOLS/split_to_tasks_skill_cli/templates/trello \
   --notify-mode dry-run
 ```
 
 Start implementation from the generated package:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli implementation-start \
   --package /abs/path/generated/<plan-slug> \
   --repo-root /abs/path/to/repo
@@ -40,7 +40,7 @@ Build completion payload now also includes:
 Print the current handoff summary:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli summary \
   --package /abs/path/generated/<plan-slug>
 ```
@@ -48,7 +48,7 @@ PYTHONPATH=src python -m split_to_tasks_skill_cli summary \
 Advance the active card to simplify:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli implementation-stage \
   --package /abs/path/generated/<plan-slug> \
   --card 0001 \
@@ -59,7 +59,7 @@ PYTHONPATH=src python -m split_to_tasks_skill_cli implementation-stage \
 Refresh derived views and capability progress for an existing package:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli refresh \
   --package /abs/path/generated/<plan-slug>
 ```
@@ -67,7 +67,7 @@ PYTHONPATH=src python -m split_to_tasks_skill_cli refresh \
 Render the live terminal board:
 
 ```bash
-cd /home/pets/TOOLS/split_to_tasks_skill_cli
+cd /home/almaz/TOOLS/split_to_tasks_skill_cli
 PYTHONPATH=src python -m split_to_tasks_skill_cli board \
   --package /abs/path/generated/<plan-slug>
 ```

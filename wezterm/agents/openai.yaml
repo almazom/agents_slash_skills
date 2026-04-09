@@ -1,0 +1,4 @@
+interface:
+  display_name: "WezTerm"
+  short_description: "Operate WezTerm SSHMUX panes, titles, and headless observer flows"
+  default_prompt: "Use $wezterm when the task involves WezTerm, SSHMUX, wezterm cli, pane inspection, semantic mux naming, or replacing unstable zellij attach flows."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Orchestra"
+  short_description: "Route Codex work through codex_wp and cdx proxy tooling"
+  default_prompt: "Use $codex-orchestra when the operator wants Codex-driven implementation or review via codex_wp, or needs cdx proxy health, rotation, limits, trace, logs, or recovery guidance."

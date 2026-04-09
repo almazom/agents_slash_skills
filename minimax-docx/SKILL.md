@@ -36,6 +36,11 @@ triggers:
 
 Create, edit, and format DOCX documents via CLI tools or direct C# scripts built on OpenXML SDK (.NET).
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀🖨️ [skill:minimax-docx] ON ...`, `🛠️🖨️ [skill:minimax-docx] STEP ...`, and `✅🖨️ [skill:minimax-docx] DONE ...`.
+
 ## Setup
 
 **First time:** `bash scripts/setup.sh` (or `powershell scripts/setup.ps1` on Windows, `--minimal` to skip optional deps).

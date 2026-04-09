@@ -12,6 +12,11 @@ metadata:
 
 # PPTX Generator & Editor
 
+## Skill trace
+
+- Follow the governing `AGENTS.md` skill-trace contract when one exists.
+- Fallback examples: `🚀🖨️ [skill:pptx-generator] ON ...`, `🛠️🖨️ [skill:pptx-generator] STEP ...`, and `✅🖨️ [skill:pptx-generator] DONE ...`.
+
 ## Overview
 
 This skill handles all PowerPoint tasks: reading/analyzing existing presentations, editing template-based decks via XML manipulation, and creating presentations from scratch using PptxGenJS. It includes a complete design system (color palettes, fonts, style recipes) and detailed guidance for every slide type.

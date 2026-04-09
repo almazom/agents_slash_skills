@@ -1,0 +1,4 @@
+interface:
+  display_name: "Heartbeat Watchdog"
+  short_description: "Observe panes, files, JSONL logs, and glob patterns with periodic heartbeats"
+  default_prompt: "Use $heartbeat-watchdog when the task is to run or inspect periodic observation on a WezTerm pane, file, JSONL session, or glob pattern via the global heartbeat-watchdog CLI."

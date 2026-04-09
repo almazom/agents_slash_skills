@@ -1,6 +1,11 @@
 # Runtime Map
 
-Runtime root: `/home/pets/TOOLS/plan_skill_cli_v2`
+Runtime root resolution order:
+
+1. `/home/pets/TOOLS/plan_skill_cli_v2`
+2. `/home/almaz/TOOLS/plan_skill_cli_v2`
+
+Current installed runtime on this machine: `/home/almaz/TOOLS/plan_skill_cli_v2`
 
 Bootstrap order:
 
@@ -12,7 +17,7 @@ Bootstrap order:
 Main command:
 
 ```bash
-cd /home/pets/TOOLS/plan_skill_cli_v2
+cd /home/almaz/TOOLS/plan_skill_cli_v2
 ./run --repo /absolute/path/to/target "Goal text"
 ```
 
@@ -42,12 +47,25 @@ Artifact layout per run:
 - `artifacts/review-synthesis.json`
 - `artifacts/gap-ledger.json`
 - `artifacts/quality-ledger.json`
+- `artifacts/split-check/iteration-01/*`
 - `summary.json`
+
+Split gate artifacts:
+
+- each quality-loop iteration may write a run-local `split-check/iteration-XX/` dry-run package
+- this is only for readiness validation and must not replace the real operator-facing split output under the target repo
+
+Downstream package onboarding expectation:
+
+- treat `trello-cards/KICKOFF.md` as the single onboarding file for the generated package
+- keep `START_HERE.md` only as a short redirect when it exists
+- keep `trello-cards/README.md` as a local helper, not the primary entry point
 
 Install targets:
 
-- `/home/pets/.agents/skills/plan-skill`
-- `/home/pets/.codex/skills/plan-skill`
+- default install script targets current user's home, for example:
+- `/home/almaz/.agents/skills/plan-skill`
+- `/home/almaz/.codex/skills/plan-skill`
 
 Reviewer timeout envs:
 
