@@ -27,8 +27,12 @@
 - SSH config: `/home/pets/.ssh/config`
 - current outbound key to Contabo:
   - `~/.ssh/id_ed25519_pets_to_almaz_contabo`
-- current alias to Contabo:
+- current aliases to Contabo:
+  - `almaz`
   - `almaz-contabo`
+- local preference:
+  - use `almaz` as the stable local alias on `pets`
+  - keep `almaz-contabo` as a compatibility alias to the same host
 - temporary return port back to `al` during testing:
   - dynamic high port on `127.0.0.1` chosen by `relay-loop-test.sh`
 
@@ -66,6 +70,7 @@ scp -P <pets_return_port> -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKn
 ### On pets
 
 ```bash
+ssh -o BatchMode=yes almaz 'hostname; whoami'
 ssh -o BatchMode=yes almaz-contabo 'hostname; whoami'
 scp -o BatchMode=yes /tmp/testfile almaz-contabo:/tmp/testfile
 ```
