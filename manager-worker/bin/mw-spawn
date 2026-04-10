@@ -1,14 +1,23 @@
 #!/bin/bash
-# Spawn new worker
+# Spawn the first visible worker from the current pane.
+
+set -euo pipefail
 
 PERCENT=${1:-50}
+MANAGER_PANE="${WEZTERM_PANE:-}"
 
-WORKER_ID=$(wezterm cli split-pane --right --percent "$PERCENT" -- bash -c 'echo "WORKER READY"; exec bash')
+if [ -z "$MANAGER_PANE" ]; then
+    echo "❌ WEZTERM_PANE is required. Run mw-spawn from the manager pane."
+    exit 1
+fi
+
+WORKER_ID=$(wezterm cli split-pane --pane-id "$MANAGER_PANE" --right --percent "$PERCENT" -- bash -lc 'printf "WORKER READY pane=%s\n" "$WEZTERM_PANE"; exec bash')
 
 if [ -z "$WORKER_ID" ]; then
     echo "❌ Failed to create worker pane"
     exit 1
 fi
 
-echo "✅ Worker spawned: pane $WORKER_ID"
-echo "Start codex_wp: mw-start $WORKER_ID"
+echo "✅ First visible worker spawned: pane $WORKER_ID"
+echo "Next: inspect startup text and placement, then run mw-start $WORKER_ID"
+echo "For stacked workers or strict diagnostics, follow references/worker-lifecycle.md"

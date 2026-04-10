@@ -2,7 +2,16 @@
 
 Use this when shaping worker packets, launchers, and examples.
 
-## Core rule
+## Contents
+
+- Core rule
+- Required behavior
+- Preferred order
+- Avoid
+- Interpretation
+- Checks
+
+## Core Rule
 
 Secrets and auth are not normal agent context.
 
@@ -34,3 +43,10 @@ Once secrets enter normal prompt space, they can leak into:
 - copied packet examples
 
 Treat secret handling as a separate high-risk path, not as ordinary context gathering.
+
+## Checks
+
+- no raw secret values appear in task packets
+- examples use vault, pointer, or injected-runtime language
+- launcher text does not embed credentials unless the task is explicitly about
+  secure secret handling

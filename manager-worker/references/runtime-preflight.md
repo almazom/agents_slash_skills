@@ -3,6 +3,13 @@
 Use this before longer worker runs, especially for `headless-mux` and
 `remote-ssh`.
 
+## Contents
+
+- Checklist
+- Item meanings
+- Observability contract
+- Transport-specific focus
+
 ## Checklist
 
 1. `auth`
@@ -12,7 +19,7 @@ Use this before longer worker runs, especially for `headless-mux` and
 5. `launcher`
 6. `observability plan`
 
-## What each item means
+## Item Meanings
 
 ### Auth
 
@@ -41,7 +48,7 @@ Use this before longer worker runs, especially for `headless-mux` and
 - verify the script path exists and is executable when using a launcher file
 - treat missing command vs broken worker as different diagnoses
 
-### Observability plan
+### Observability Plan
 
 State explicitly:
 
@@ -79,3 +86,10 @@ STOP CONDITIONS: healthy | blocked | done | failed startup | operator stop
 - git identity on remote host
 - remote launcher health
 - remote observability path
+
+## Checks
+
+- the chosen transport has a matching preflight
+- auth and env are verified without copying raw secrets into prompts
+- launcher health is checked before blaming the worker
+- the observation lifecycle is explicit before the run starts
