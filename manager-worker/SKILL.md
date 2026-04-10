@@ -1,7 +1,7 @@
 ---
 name: manager-worker
 description: Orchestrate multiple Codex workers via WezTerm panes with heartbeat observation, manager-first intake, routing policy, and reusable DONE templates
-triggers: manager, worker, heartbeat, watchdog, mw-heartbeat, mw-send, mw-spawn, observe worker, worker pane, spawn worker, spawn 2 workers, spawn 3 workers, spawn workers, spawn codex workers
+triggers: manager, worker, heartbeat, watchdog, mw-heartbeat, mw-send, mw-spawn, observe worker, worker pane, spawn worker, spawn 2 workers, spawn 3 workers, spawn workers, spawn codex workers, Shehroz, shehroz
 ---
 
 # Manager-Worker Skill
@@ -10,6 +10,11 @@ Orchestrate multiple Codex workers via WezTerm panes with heartbeat observation.
 
 This skill is not only about pane control. It is also the manager's intake,
 routing, and delegation-quality layer.
+
+Operator alias trigger:
+- if the operator addresses the manager as `Shehroz` or `shehroz` in a worker,
+  pane, heartbeat, or orchestration context, treat that as a direct trigger for
+  this skill
 
 ## Core Concept
 
@@ -216,6 +221,168 @@ Notes:
 - verify the launcher command or script before treating a bad startup as a worker failure
 - define the exact first and next observation before the worker starts
 
+### 1d1. `codex_wp exec --help` probe before raw terminal launch
+
+If the manager is about to:
+- type a raw `codex_wp ... exec ...` command through `send-text`
+- compose a launcher script that shells out to `codex_wp exec`
+- launch through a remote shell where quoting and wrapper-flag order can drift
+
+then the manager must first run:
+
+```bash
+codex_wp exec --help
+```
+
+Run that probe in the same runtime context that will launch the worker:
+- local pane -> probe locally
+- remote SSH pane -> probe on the remote host
+- custom launcher env -> probe from that same env before composing the final command
+
+Purpose:
+- confirm the currently accepted argument shape
+- avoid stale assumptions about wrapper flags versus `exec` flags
+- catch command-order mistakes before sending brittle raw terminal text
+
+Rule:
+- do not send raw terminal launch text for `codex_wp exec` until this help probe has been checked
+- if the final command also uses top-level Codex flags, verify those against the help output before launch
+
+### 1d2. Hook-loop launch pattern for long continuation runs
+
+Use this when the operator wants one worker to keep resuming through repeated
+stop events instead of relying on a single uninterrupted run.
+
+Critical rules:
+- for headless hook-loop runs, use `codex_wp exec --json`; plain
+  `codex_wp --hook stop ...` is not enough for reliable non-interactive continuation
+- `--hook-times <n>` is the resume budget, not proof of progress
+- if you need a fixed fallback resume prompt, use `--hook-prompt-mode hybrid`
+  with `--hook-prompt ...`
+- do not use `--hook-prompt` together with `--hook-prompt-mode auto`
+- use `--hook-auto-stop-on-complete` only with `auto` or `hybrid`
+- the resume prompt must force re-read of the SSOT, current diff, and latest
+  artifacts instead of a vague `continue`
+- if the worker should run finalization such as `$code-simplifier` or
+  `$auto-commit`, state explicitly that this is allowed only after the full
+  parent plan is complete
+
+Bad example:
+
+```bash
+codex_wp --hook stop --hook-prompt "продолжай" --hook-times 3
+```
+
+Why it is bad:
+- too vague for recovery
+- not explicit about `exec --json`
+- does not force SSOT re-read
+- can repeat work or finalize too early
+
+Preferred shape:
+
+```bash
+codex_wp exec --json \
+  -C /abs/repo \
+  -f /abs/plan-or-context-file \
+  "Implement the next unfinished task truthfully. Re-read the SSOT, current git diff, and latest task artifacts before each step. Do not claim completion early." \
+  --hook stop \
+  --hook-times 30 \
+  --hook-prompt-mode hybrid \
+  --hook-prompt "Re-read the SSOT, current git diff, and latest artifacts. Continue only the next unfinished task. If and only if the full plan is complete, run \$code-simplifier, then \$auto-commit, then stop." \
+  --hook-auto-stop-on-complete \
+  --hook-delivery mattermost
+```
+
+Preferred remote-server shape with artifact-backed launch + visible observation:
+
+```bash
+RUN_ROOT="/tmp/<run-id>"
+mkdir -p "$RUN_ROOT/prompts" "$RUN_ROOT/results"
+
+cat > "$RUN_ROOT/prompts/initial_prompt.txt" <<'EOF'
+WORKDIR: /abs/repo
+CONTEXT: remote repo + active SSOT package/plan
+PROBLEM: the operator wants non-stop implementation on the remote host
+TASK: use the required implementation skill and continue only the next truthful unfinished step
+DONE:
+  - SSOT reflects the real next stage
+  - required verification artifacts are saved
+  - no unrelated user changes are reverted
+REFERENCES:
+  - /abs/ssot-file
+  - /abs/kickoff-or-card
+  - /abs/extra-context
+EOF
+
+cat > "$RUN_ROOT/prompts/hook_prompt.txt" <<'EOF'
+Re-read the SSOT, current git diff, and latest artifacts. Continue only the
+next unfinished task. If and only if the full parent plan is complete, run
+$code-simplifier, then $auto-commit, then stop.
+EOF
+
+cat > "$RUN_ROOT/run.sh" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+RUN_ROOT="/tmp/<run-id>"
+REPO="/abs/repo"
+HOOK_PROMPT=$(cat "$RUN_ROOT/prompts/hook_prompt.txt")
+INITIAL_PROMPT=$(cat "$RUN_ROOT/prompts/initial_prompt.txt")
+cd "$REPO"
+exec /bin/bash /home/almaz/.local/bin/codex_wp \
+  -f /abs/ssot-or-context-file \
+  exec --json \
+  -C "$REPO" \
+  --hook stop \
+  --hook-times 30 \
+  --hook-prompt-mode hybrid \
+  --hook-auto-stop-on-complete \
+  --hook-delivery mattermost \
+  --hook-last-message-format ru3 \
+  --hook-extract-intent \
+  --hook-prompt "$HOOK_PROMPT" \
+  "$INITIAL_PROMPT" |& tee "$RUN_ROOT/results/worker-terminal.log"
+EOF
+
+chmod +x "$RUN_ROOT/run.sh"
+```
+
+Critical remote-launch rule:
+- when starting that launcher through SSH, prefer `ssh -n <host> 'bash /tmp/<run-id>/run.sh'`
+- leaving stdin open with plain `ssh ...` can make `codex_wp exec` print
+  `Reading additional input from stdin...` and stall waiting for EOF
+
+Canonical observability for this pattern:
+- `FIRST SNAPSHOT`: immediately after spawn
+- `NEXT SNAPSHOT`: `60s`
+- `HEARTBEAT CADENCE`: every `60s`
+- `STOP CONDITIONS`: healthy progress | blocked | done | failed startup | operator stop
+- each heartbeat should report only short operator-facing facts: current card or task, movement vs no-change, and the next manager interpretation
+- if the operator asks for `non-stop observation`, treat the default observation budget as `100` cycles minimum at `60s` each unless the operator explicitly overrides it
+- do not silently shorten that loop; shortening below `100` requires an explicit operator change or a hard stop condition such as done, blocked, failed startup, or operator stop
+
+Dirty-repo rule for this pattern:
+- a dirty repo is not an automatic blocker for the remote hook-loop path
+- preserve unrelated user changes
+- keep current card edits scoped and truthful
+- if the broader flow benefits from restoring commit hygiene and the current scope is understood, the manager may invoke `$auto-commit` without asking again for permission
+- do not treat that as permission to commit unrelated unknown changes blindly; read `git status`, group changes, and keep commit ownership explicit
+
+Visible right-pane launch pattern for a remote repo:
+
+```bash
+MANAGER_PANE="${WEZTERM_PANE:?current pane required}"
+WORKER_ID="$(wezterm cli split-pane --pane-id "$MANAGER_PANE" --right --percent 50 -- bash -lc 'printf "WORKER READY pane=%s\n" "$WEZTERM_PANE"; exec bash')"
+
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "ssh almaz 'cd /abs/repo && /bin/bash /home/almaz/.local/bin/codex_wp exec --json ...'"
+sleep 0.3
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+```
+
+Use `/bin/bash /home/almaz/.local/bin/codex_wp` on `almaz` when the runtime is
+inside an AppImage-driven `wezterm` environment and `#!/usr/bin/env bash`
+resolution is flaky.
+
 ### 1e. Security boundary for agent context
 
 Do not make raw `.env` content part of normal worker context unless the task is
@@ -270,6 +437,36 @@ After every worker spawn:
 Preferred order:
 - `wezterm cli get-text --pane-id <id> --start-line -40`
 - then `bin/mw-heartbeat <id> <interval> <beats>` or repeated `get-text`
+
+Default cadence for remote long-running implementation:
+- use `60s` as the default heartbeat interval unless the operator explicitly wants a tighter cadence
+- keep the manager updates short and repetitive-proof: what moved, what did not, and what the manager will do next
+- when the operator says `non-stop observation`, prefer a concrete shell watcher shape equivalent to `sleep 60` repeated `100` times minimum, not a shorter ad hoc wait window
+
+### 3a0. Operator-care handoff for very long runs
+
+If the manager is starting or observing a run that is expected to stay in the
+background for a long time, do not give only a dry technical status.
+
+Before the long watch loop settles in:
+1. save a durable re-entry checkpoint in memory or the relevant project card
+2. tell the operator clearly that this run is expected to take a while
+3. explicitly say the operator may close the notebook, rest, read a book, or switch to something else
+4. if a real notification path is already active for this run, say so
+5. if notification status is not verified, state that honestly instead of promising it
+
+Tone rule:
+- calm and low-pressure
+- supportive, not theatrical
+- practical, not paternalistic
+
+Preferred shape:
+- address the operator by name when that helps the handoff land naturally
+- mention the saved checkpoint first, so stepping away feels safe
+- remind the operator how to re-enter later: pane/log/SSOT path
+
+Example:
+- `Almaz, this run will likely take a while. I saved where we are, so you can close the notebook and switch off for a bit. If this run finishes and the notification bridge for this session is active, you will get the notification. If you come back manually, start from pane/log/SSOT.`
 
 Do not treat "pane exists" as enough evidence. Observability must confirm both
 visibility and startup.
@@ -456,6 +653,8 @@ Use these defaults unless the operator explicitly overrides them.
    - treat `spawn -> diagnostics -> startup snapshot -> periodic observation` as the minimum launch lifecycle
 8. **Secret-safe context**
    - keep raw secrets out of normal worker prompts and prefer injected runtime env
+9. **Long-run operator care**
+   - for very long background runs, give a short reassuring handoff: checkpoint saved, safe to step away, and honest notification status
 
 ### Preferred Routing Outcomes
 
@@ -878,6 +1077,12 @@ Before sending any task to a worker, verify:
 are fragile
 **Fix**: Put the prompt in a file and start the worker through a launcher script
 that runs `codex_wp exec ... - < prompt.txt |& tee log`
+
+### Issue: `codex_wp exec` launcher fails on flag order
+**Cause**: wrapper flags, top-level Codex flags, and `exec` arguments were composed
+from memory and sent raw through the terminal
+**Fix**: run `codex_wp exec --help` in the target runtime first, then build the
+exact launcher or `send-text` command from that confirmed shape
 
 ### Issue: Large nested review run stalls on delegated waits
 **Cause**: worker->subagent fan-out can wedge even while the top-level worker
