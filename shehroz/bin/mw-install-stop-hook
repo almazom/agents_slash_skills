@@ -1,0 +1,154 @@
+#!/bin/bash
+# Install a temporary repo-local Stop hook that stops cleanly and writes a review-needed artifact.
+# Usage:
+#   mw-install-stop-hook --project-root /abs/project --run-root /tmp/run [--task-id task-001] [--task-file /tmp/run/prompts/task.txt] [--worker-pane 12] [--manager-pane 9]
+
+set -euo pipefail
+
+PROJECT_ROOT=""
+RUN_ROOT=""
+TASK_ID=""
+TASK_FILE=""
+WORKER_PANE=""
+WORKER_LABEL=""
+MANAGER_PANE=""
+HOOK_SCRIPT="/Users/al/TOOLS/manager_wezterm_cli/bin/manager-worker-stop-notify.py"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --project-root)
+            PROJECT_ROOT="${2:-}"
+            shift 2
+            ;;
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        --task-id)
+            TASK_ID="${2:-}"
+            shift 2
+            ;;
+        --task-file)
+            TASK_FILE="${2:-}"
+            shift 2
+            ;;
+        --worker-pane)
+            WORKER_PANE="${2:-}"
+            shift 2
+            ;;
+        --worker-label)
+            WORKER_LABEL="${2:-}"
+            shift 2
+            ;;
+        --manager-pane)
+            MANAGER_PANE="${2:-}"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$PROJECT_ROOT" || -z "$RUN_ROOT" ]]; then
+    echo "Usage: mw-install-stop-hook --project-root /abs/project --run-root /tmp/run [--task-id task-001] [--task-file /tmp/run/prompts/task.txt] [--worker-pane 12] [--manager-pane 9]" >&2
+    exit 1
+fi
+
+if [[ ! -f "$HOOK_SCRIPT" ]]; then
+    echo "Hook script not found: $HOOK_SCRIPT" >&2
+    exit 1
+fi
+
+HOOKS_DIR="$PROJECT_ROOT/.codex"
+HOOKS_JSON="$HOOKS_DIR/hooks.json"
+STATE_DIR="$RUN_ROOT/hooks"
+STATE_FILE="$STATE_DIR/install-state.json"
+BACKUP_FILE="$STATE_DIR/original-hooks.json"
+
+mkdir -p "$HOOKS_DIR" "$STATE_DIR"
+
+if [[ -f "$HOOKS_JSON" ]]; then
+    cp "$HOOKS_JSON" "$BACKUP_FILE"
+    HAD_HOOKS=true
+else
+    HAD_HOOKS=false
+fi
+
+python3 - "$HOOKS_JSON" "$HOOK_SCRIPT" "$RUN_ROOT" "$TASK_ID" "$TASK_FILE" "$PROJECT_ROOT" "$WORKER_PANE" "$WORKER_LABEL" "$MANAGER_PANE" <<'PY'
+import json
+import shlex
+import sys
+from pathlib import Path
+
+hooks_json, hook_script, run_root, task_id, task_file, project_root, worker_pane, worker_label, manager_pane = sys.argv[1:]
+path = Path(hooks_json)
+
+if path.exists():
+    data = json.loads(path.read_text(encoding="utf-8"))
+else:
+    data = {}
+
+hooks = data.setdefault("hooks", {})
+
+env_parts = [
+    f"MANAGER_RUN_ROOT={shlex.quote(run_root)}",
+    f"MANAGER_PROJECT_ROOT={shlex.quote(project_root)}",
+]
+if task_id:
+    env_parts.append(f"MANAGER_TASK_ID={shlex.quote(task_id)}")
+if task_file:
+    env_parts.append(f"MANAGER_TASK_FILE={shlex.quote(task_file)}")
+if worker_pane:
+    env_parts.append(f"MANAGER_WORKER_PANE={shlex.quote(worker_pane)}")
+if worker_label:
+    env_parts.append(f"MANAGER_WORKER_LABEL={shlex.quote(worker_label)}")
+if manager_pane:
+    env_parts.append(f"MANAGER_MANAGER_PANE={shlex.quote(manager_pane)}")
+
+command = " ".join(env_parts + ["/usr/bin/python3", shlex.quote(hook_script)])
+
+hooks["Stop"] = [
+    {
+        "hooks": [
+            {
+                "type": "command",
+                "command": command,
+                "timeout": 15,
+                "statusMessage": "Shehroz stop review"
+            }
+        ]
+    }
+]
+
+path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+print(command)
+PY
+
+python3 - "$STATE_FILE" "$PROJECT_ROOT" "$RUN_ROOT" "$HOOKS_JSON" "$BACKUP_FILE" "$TASK_ID" "$TASK_FILE" "$HAD_HOOKS" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+state_file, project_root, run_root, hooks_json, backup_file, task_id, task_file, had_hooks = sys.argv[1:]
+payload = {
+    "installed_at_utc": datetime.now(timezone.utc).isoformat(),
+    "project_root": project_root,
+    "run_root": run_root,
+    "hooks_json": hooks_json,
+    "backup_file": backup_file,
+    "task_id": task_id or None,
+    "task_file": task_file or None,
+    "had_existing_hooks_json": had_hooks.lower() == "true",
+}
+with open(state_file, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+PY
+
+echo "✅ Installed repo-local Stop hook"
+echo "HOOKS_JSON=$HOOKS_JSON"
+echo "STATE_FILE=$STATE_FILE"
+echo "Removal command:"
+echo "  mw-remove-stop-hook --run-root \"$RUN_ROOT\""

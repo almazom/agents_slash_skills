@@ -1,6 +1,7 @@
 ---
 name: codex-orchestra
 description: Use when the operator wants implementation, review, or second-opinion work routed through local Codex CLI tooling, especially via `codex_wp` plus `cdx` proxy commands for health, rotation, limits, trace, and recovery.
+triggers: codex-orchestra, $codex-orchestra, codex_wp, cdx proxy, ask Codex, Codex-only, implement with Codex, cdx status, cdx doctor, cdx rotate, cdx health, codex exec, пусть Codex сделает
 ---
 
 # codex-orchestra

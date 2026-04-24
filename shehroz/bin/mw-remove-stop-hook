@@ -1,0 +1,107 @@
+#!/bin/bash
+# Remove or restore a temporary repo-local Stop hook installed by mw-install-stop-hook.
+# Usage: mw-remove-stop-hook --run-root /tmp/run-root
+
+set -euo pipefail
+
+RUN_ROOT=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$RUN_ROOT" ]]; then
+    echo "Usage: mw-remove-stop-hook --run-root /tmp/run-root" >&2
+    exit 1
+fi
+
+STATE_FILE="$RUN_ROOT/hooks/install-state.json"
+
+if [[ ! -f "$STATE_FILE" ]]; then
+    echo "Install state not found: $STATE_FILE" >&2
+    exit 1
+fi
+
+readarray -t STATE < <(python3 - "$STATE_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+
+hooks_json = (
+    data.get("hooks_json")
+    or data.get("hooks_file")
+    or data.get("hooks_path")
+    or ""
+)
+backup_file = data.get("backup_file") or ""
+had_existing = (
+    data.get("had_existing_hooks_json")
+    if "had_existing_hooks_json" in data
+    else data.get("original_hooks_present")
+)
+if had_existing is None:
+    had_existing = data.get("original_exists")
+
+print(hooks_json)
+print(backup_file)
+print("true" if had_existing else "false")
+print(data.get("project_root") or "")
+PY
+)
+
+HOOKS_JSON="${STATE[0]}"
+BACKUP_FILE="${STATE[1]}"
+HAD_EXISTING="${STATE[2]}"
+PROJECT_ROOT="${STATE[3]}"
+
+if [[ -z "$HOOKS_JSON" ]]; then
+    echo "Hook path missing in install state: $STATE_FILE" >&2
+    exit 1
+fi
+
+if [[ "$HAD_EXISTING" == "true" && -f "$BACKUP_FILE" ]]; then
+    cp "$BACKUP_FILE" "$HOOKS_JSON"
+    CLEANUP_ACTION="restored_original"
+    echo "✅ Restored original hooks.json: $HOOKS_JSON"
+else
+    rm -f "$HOOKS_JSON"
+    CLEANUP_ACTION="removed_temporary"
+    echo "✅ Removed temporary hooks.json: $HOOKS_JSON"
+fi
+
+CLEANUP_STATE="$RUN_ROOT/hooks/cleanup-state.json"
+python3 - "$CLEANUP_STATE" "$PROJECT_ROOT" "$HOOKS_JSON" "$CLEANUP_ACTION" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+cleanup_state, project_root, hooks_json, cleanup_action = sys.argv[1:]
+payload = {
+    "cleaned_at_utc": datetime.now(timezone.utc).isoformat(),
+    "project_root": project_root or None,
+    "hooks_json": hooks_json,
+    "cleanup_action": cleanup_action,
+    "repo_hook_exists_after_cleanup": Path(hooks_json).exists(),
+    "runtime_replacement_required_if_session_started_before_cleanup": True,
+    "note": "If a live Codex session loaded the old hook before cleanup, replace or restart that session before trusting future stop wakeups.",
+}
+with open(cleanup_state, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+PY
+
+echo "CLEANUP_STATE=$CLEANUP_STATE"
+echo "Reminder: file cleanup alone is not enough if a live Codex session already loaded the old hook."
+echo "Replace or restart the affected session before trusting future stop wakeups."

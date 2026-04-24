@@ -1,0 +1,4 @@
+interface:
+  display_name: "ntfy"
+  short_description: "Render and send template-based AI-agent notifications to self-hosted ntfy"
+  default_prompt: "Use $ntfy to send a template-based AI-agent notification to self-hosted ntfy with an explicit topic."

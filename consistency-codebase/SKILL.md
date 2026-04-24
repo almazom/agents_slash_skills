@@ -1,6 +1,7 @@
 ---
 name: consistency-codebase
 description: Apply a consistent editorial and structural standard to instruction, workflow, review, and reusable prompt-library markdown files across a repository. Use when creating, reviewing, or normalizing repository guidance files, especially when multiple instruction sources may conflict or when a codebase needs consistent task-file structure, terminology, precedence, maintainability, and output contracts.
+triggers: consistency-codebase, $consistency-codebase, markdown governance, normalize markdown, AGENTS.md review, instruction consistency, documentation consistency, task-file structure, editorial standard
 ---
 
 # Consistency Codebase

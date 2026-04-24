@@ -5,6 +5,7 @@ description: |
   Use when: user wants to create cartoon stickers, GIF expressions, emoji packs, animated avatars,
   or convert photos to Funko Pop / Pop Mart blind box style animations.
   Triggers: sticker, GIF, cartoon, emoji, expression pack, avatar animation.
+triggers: gif-sticker-maker, sticker, GIF, cartoon sticker, emoji pack, animated avatar, Funko Pop, Pop Mart, GIF expression, sticker maker, animated sticker, photo to sticker
 license: MIT
 metadata:
   version: "1.2"

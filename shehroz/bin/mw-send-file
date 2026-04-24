@@ -1,0 +1,105 @@
+#!/bin/bash
+# Send a file's contents to a worker pane by writing to a temp file and sourcing it.
+# Usage: mw-send-file [options] <worker_id> <file_path>
+# Options:
+#   --paste    Use paste mode instead of base64 (faster but may have formatting issues)
+
+set -euo pipefail
+
+USE_PASTE=false
+RUN_ROOT=""
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --paste)
+            USE_PASTE=true
+            shift
+            ;;
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Usage: mw-send-file [--paste] [--run-root /abs/run-root] <worker_id> <file_path>"
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+WORKER_ID=${1:-}
+FILE_PATH=${2:-}
+
+if [ -z "$WORKER_ID" ] || [ -z "$FILE_PATH" ]; then
+    echo "Usage: mw-send-file [--paste] [--run-root /abs/run-root] <worker_id> <file_path>"
+    echo "Example: mw-send-file 5 /tmp/task-contract.txt"
+    echo "         mw-send-file --paste 5 /tmp/task-contract.txt  (faster, paste mode)"
+    exit 1
+fi
+
+if [ ! -f "$FILE_PATH" ]; then
+    echo "Error: File not found: $FILE_PATH"
+    exit 1
+fi
+
+if [[ -n "$RUN_ROOT" ]]; then
+    mkdir -p "$RUN_ROOT/prompts"
+    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    PROMPT_PATH="$RUN_ROOT/prompts/file-send-$STAMP.txt"
+    cp "$FILE_PATH" "$PROMPT_PATH"
+    cp "$FILE_PATH" "$RUN_ROOT/prompt.md"
+    python3 - "$RUN_ROOT/prompt-history.jsonl" "$STAMP" "$WORKER_ID" "$FILE_PATH" "$PROMPT_PATH" <<'PY'
+import json
+import sys
+
+history_path, stamp, worker_id, source_path, prompt_path = sys.argv[1:]
+payload = {
+    "timestamp_utc": stamp,
+    "kind": "file_send",
+    "worker_pane_id": worker_id,
+    "source_path": source_path,
+    "stored_prompt_path": prompt_path,
+    "latest_prompt_md": "prompt.md",
+}
+with open(history_path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+PY
+fi
+
+# Generate unique temp filename on the worker
+TEMP_FILE="/tmp/mw-contract-$(date +%s)-$RANDOM.sh"
+
+if [ "$USE_PASTE" = true ]; then
+    # Faster paste mode - directly paste content
+    wezterm cli send-text --pane-id "$WORKER_ID" "cat > '$TEMP_FILE' << 'EOF_MW_CONTRACT'"
+    wezterm cli send-text --pane-id "$WORKER_ID" $'\x0d'
+    # Send file content
+    while IFS= read -r line || [ -n "$line" ]; do
+        wezterm cli send-text --pane-id "$WORKER_ID" "$line"
+        wezterm cli send-text --pane-id "$WORKER_ID" $'\x0d'
+    done < "$FILE_PATH"
+    wezterm cli send-text --pane-id "$WORKER_ID" "EOF_MW_CONTRACT"
+    wezterm cli send-text --pane-id "$WORKER_ID" $'\x0d'
+    sleep 0.3
+else
+    # Default: base64 encoding (preserves all characters reliably)
+    ENCODED=$(base64 -w 0 "$FILE_PATH")
+    wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "echo '$ENCODED' | base64 -d > '$TEMP_FILE'"
+    wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+    sleep 0.5
+fi
+
+# Source the file to execute it (for shell workers) or just notify (for codex)
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "source '$TEMP_FILE' 2>/dev/null || cat '$TEMP_FILE'"
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+sleep 0.3
+
+echo "📤 Sent file $FILE_PATH to worker $WORKER_ID (saved as $TEMP_FILE)"
+if [[ -n "$RUN_ROOT" ]]; then
+    echo "Prompt stored under: $RUN_ROOT"
+fi
+echo "Note: For codex workers, use 'cat $TEMP_FILE' to read the contract."

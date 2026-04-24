@@ -7,6 +7,7 @@ description: |
   Use when: building landing pages, marketing sites, product pages, dashboards,
   generating media assets (image/video/audio/music), writing conversion copy,
   creating generative art, or implementing cinematic scroll animations.
+triggers: frontend-dev, frontend, UI design, landing page, Framer Motion, GSAP, Three.js, Tailwind, React, Next.js, cinematic animation, premium UI, scroll animation, web page, marketing site
 license: MIT
 metadata:
   version: "1.0.0"

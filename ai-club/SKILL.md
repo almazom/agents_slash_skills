@@ -1,6 +1,7 @@
 ---
 name: ai-club
 description: Operate the shared ai_club skill only for the Telegram channel and chat "ИИшница" using /home/pets/TOOLS/aiclub_skill as the only runtime core. Use when the task explicitly refers to ai_club, ИИшница, or iishnitsa and needs fetch, explanation, analytics, extraction, or publication for that specific source. Do not use this skill for DEKSDEN, Denis Kiselev, deksden_notes, DEKSDEN chat, or kiselev-read requests.
+triggers: ai-club, ai_club, ИИшница, iishnitsa, aiclub, publish ai_club, fetch ai_club, ai club analytics, explorer template, sync iishnitsa
 ---
 
 # ai_club

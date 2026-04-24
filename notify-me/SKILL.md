@@ -1,13 +1,16 @@
 ---
 name: notify-me
 description: Use when the user wants to send a message or file through the dual `mattermost_to_me` wrapper, verify Telegram + Mattermost delivery, dry-run a notification, or send `multy_cli` run artifacts such as `provider_responses/*.md`, `model_responses/*.md`, articles, summaries, or logs.
+triggers: notify-me, $notify-me, mattermost_to_me, t2me, notify, send notification, Mattermost notification, Telegram notification, send message, notify operator, mattermost_to_me --only
 ---
 
 # Notify Me
 
 Use this skill for the local dual-delivery wrapper:
 
-- `/home/almaz/TOOLS/mattermost_to_me_cli/mattermost_to_me`
+- prefer `/home/pets/TOOLS/mattermost_to_me_cli/mattermost_to_me`
+- fallback `/home/almaz/TOOLS/mattermost_to_me_cli/mattermost_to_me` when the
+  local host actually exposes the wrapper there
 
 Default behavior:
 
@@ -57,6 +60,17 @@ Current `send` flags:
 5. If the user wants a safe check first, add `--dry-run`.
 6. If the user explicitly wants Telegram-only delivery, add `--only telegram`.
 7. If the user explicitly wants Mattermost-only delivery, add `--only mattermost`.
+
+## Trello Done Pattern
+
+When a Trello-backed workflow moves a card to `Done`:
+- send the completion note through Mattermost only
+- send it immediately after the `Done` move and final Trello comment
+- keep it short, human-facing, and in Russian
+- include at minimum: card title, epic/list context, `Done` verdict, and the
+  next step or epic status when already clear
+- prefer `$notify-me` / `mattermost_to_me --only mattermost` even if other
+  wrapper defaults differ elsewhere
 
 ## Copy-Paste Patterns
 
@@ -127,4 +141,5 @@ unless the user explicitly asks for the prompt chain or pipeline planning inputs
 - If a file path is relative, resolve it to an absolute path before sending.
 - If Markdown formatting is not needed, omit `--markdown` to reduce rendering surprises.
 - Default to dual delivery. Narrow to one transport only when the user explicitly asks or when one route is clearly unhealthy.
+- For Trello card completion notifications, override that default and use Mattermost-only delivery.
 - If Mattermost delivery fails but Telegram succeeds, report the partial failure explicitly instead of silently falling back to Telegram-only.

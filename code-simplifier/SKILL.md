@@ -1,6 +1,7 @@
 ---
 name: code-simplifier
 description: Simplifies and refines code for clarity, consistency, and maintainability while preserving all functionality. Focuses on recently modified code unless instructed otherwise.
+triggers: code-simplifier, $code-simplifier, simplify, simplify code, code cleanup, refactoring, clean code, code quality, code review simplification
 ---
 
 

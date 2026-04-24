@@ -1,0 +1,125 @@
+# Trello Workflow
+
+Board: {{BOARD_URL}}
+
+## Board IDs
+
+| Resource | ID |
+|----------|----|
+| Board | {{BOARD_ID}} |
+{{LIST_IDS_TABLE}}
+
+## Epic Labels
+
+| Epic | Label ID | Color |
+|------|----------|-------|
+{{EPIC_LABELS_TABLE}}
+
+## Mandatory Card Lifecycle Workflow
+
+Every execution card MUST pass through ALL workflow lanes in order. No lane may
+be skipped.
+
+## Lane Semantics
+
+| Lane | Movement semantic |
+|------|-------------------|
+| `Info → Backlog` | Card is scoped and ready for implementation. |
+| `Backlog → In Progress` | Manager assigns work to a worker. |
+| `In Progress → Review` | Manager MUST run `codex_wp review` before the move. |
+| `Review → Simplification` | Manager MUST run `$code-simplification` or record a truthful no-change verdict. |
+| `Simplification → Auto-commit` | Manager MUST run `$auto-commit` and capture commit evidence. |
+| `Auto-commit → Done` | Manager performs final verification and sends `$notify-me`. |
+| `Review → Blocked` | Use when 3 review cycles still return P0/P1 issues or a real blocker prevents progress. |
+| `Blocked → Backlog` | Use only after operator or manager resolves the blocker and the card is ready for another real attempt. |
+
+### Lane-by-lane transition protocol
+
+Each transition is atomic: Trello move + Trello comment happen in the same
+action chain.
+
+#### Transition 1: Backlog -> In Progress
+
+| Step | Who | Action | Tool |
+|------|-----|--------|------|
+| 1a | Manager | Check Trello board state for card location and dependencies | `trello card-info` |
+| 1b | Manager | Build task prompt from card description + technical details | text assembly |
+| 1c | Manager | Dispatch task to worker pane | `p2p --pane-id WORKER --submit "<prompt>"` |
+| 1d | Manager | Move card to In Progress | `trello move-card` |
+| 1e | Manager | Add Trello comment with dispatch evidence | `trello add-comment` |
+
+#### Transition 2: In Progress -> Review
+
+**Trigger:** worker sends `TAHIR_DONE_<task-id>` via p2p.
+
+| Step | Who | Action | Tool |
+|------|-----|--------|------|
+| 2a | Manager | Receive completion signal | p2p inbox |
+| 2b | Manager | Verify implementation files exist | `git status` |
+| 2c | Manager | Run code review | `codex_wp review <files>` or `kimi` review |
+| 2d | Manager | If P0/P1 issues found -> send fixes to worker | `p2p --pane-id WORKER` |
+| 2e | Manager | When review passes, move card to Review | `trello move-card` |
+| 2f | Manager | Save review report to file | write tool |
+| 2g | Manager | Add Trello comment with review verdict | `trello add-comment` |
+
+#### Review Back-and-Forth Escape Hatch
+
+- keep a per-card review cycle count
+- after 3 review cycles still producing P0/P1 issues, stop the loop
+- move the card to `Blocked` when that list exists
+- add a simplified Russian blocker comment
+- if `Blocked` does not exist, keep the card in `Review` with the truthful blocker comment
+- resume only through `Blocked → Backlog` after the blocker is actually resolved
+
+#### Transition 3: Review -> Simplification
+
+| Step | Who | Action | Tool |
+|------|-----|--------|------|
+| 3a | Manager | Run simplification pass | `$code-simplification` skill |
+| 3b | Manager | If simplification found -> apply changes | edit/write |
+| 3c | Manager | Move card to Simplification | `trello move-card` |
+| 3d | Manager | Add Trello comment with simplification result | `trello add-comment` |
+
+#### Transition 4: Simplification -> Auto-commit
+
+| Step | Who | Action | Tool |
+|------|-----|--------|------|
+| 4a | Manager | Stage all changed/new files | `git add <files>` |
+| 4b | Manager | Create commit with descriptive message | `git commit` |
+| 4c | Manager | Record commit hash | `git log --oneline -1` |
+| 4d | Manager | Move card to Auto-commit | `trello move-card` |
+| 4e | Manager | Add Trello comment with commit hash + subject | `trello add-comment` |
+
+#### Transition 5: Auto-commit -> Done
+
+| Step | Who | Action | Tool |
+|------|-----|--------|------|
+| 5a | Manager | Verify card passed all previous lanes | check comments |
+| 5b | Manager | Move card to Done | `trello move-card` |
+| 5c | Manager | Add final Trello comment | `trello add-comment` |
+| 5d | Manager | Send Mattermost notification | `$notify-me` skill |
+| 5e | Manager | Advance to next task | re-enter at Transition 1 |
+
+## Trello Comment Style
+
+- Use simplified Russian only
+- Use bullet points only
+- Keep each bullet to 3-5 words when practical
+- Keep comments human-facing and easy to scan
+
+## Info Column Structure
+
+- `Info` is an archive and reference list, not a workflow lane
+- Keep one aggregate mockups card such as `<emoji> Mockups Gallery`
+- Keep one aggregate audio card such as `<emoji> Voice Summaries Archive`
+- These cards mirror links from per-epic info cards and never carry epic labels
+- These cards never move through workflow lanes
+
+## Epic Runner Cards
+
+- Live in `Epics Runners` only
+- Never carry epic labels
+- Never move through workflow lanes
+- Never become actionable task cards
+- Runner script is the mandatory epic execution path
+- Launcher header should reference project-root `TRELLO.md`

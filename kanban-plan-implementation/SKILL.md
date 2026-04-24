@@ -1,6 +1,7 @@
 ---
 name: kanban-plan-implementation
 description: Start or inspect implementation flow from a kanban JSON plan using /home/pets/TOOLS/kanban_plan_implementation_skill_cli, while keeping the kanban JSON as the execution entrypoint and target SSOT.
+triggers: kanban-plan-implementation, $kanban-plan-implementation, kanban implementation, implement kanban plan, kanban manage, kanban-plan-implementation manage, kanban-plan-implementation status
 ---
 
 # kanban-plan-implementation

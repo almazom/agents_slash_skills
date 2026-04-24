@@ -1,6 +1,7 @@
 ---
 name: telega
 description: Use when the task is to send, fetch, inspect, or route Telegram messages through the local ./TOOLS/telega wrapper, especially when choosing between verified sender profiles and validating the latest outbound or inbound exchange.
+triggers: telega, $telega, Telegram, telegram send, telegram fetch, telega wrapper, Telegram message, almazom, verified sender, telegram profile
 ---
 
 # Telega

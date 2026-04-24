@@ -1,6 +1,7 @@
 ---
 name: kickoff
 description: Use only when the user explicitly asks to use the local kickoff long-running session wrapper or names `$kickoff`. This skill runs or resumes managed Codex sessions through `/home/pets/TOOLS/kickoff_slash/kickoff-sdk`, keeps the JSON stop-contract and auto-continue loop in place, supports optional `--goal`, `--thread-id`, and `--mattermost`, and falls back to `kickoff-slash` only for project-local interactive hook mode.
+triggers: kickoff, $kickoff, kickoff-slash, kickoff-sdk, long-running session, codex session resume, kickoff run, kickoff resume
 ---
 
 # Kickoff

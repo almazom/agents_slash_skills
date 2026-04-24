@@ -9,6 +9,7 @@ description: |
   setting up API clients, implementing auth flows, handling file uploads,
   adding real-time features (SSE/WebSocket), hardening for production.
   DO NOT TRIGGER when: pure frontend UI work, pure CSS/styling, database schema only.
+triggers: fullstack-dev, full-stack, REST API, backend, Express, Next.js API, Node.js backend, Python backend, Go backend, CRUD app, real-time app, chat app, service layer, auth flows, SSE, WebSocket, full stack app
 license: MIT
 metadata:
   category: full-stack

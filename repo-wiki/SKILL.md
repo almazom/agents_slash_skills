@@ -1,6 +1,7 @@
 ---
 name: repo-wiki
 description: Analyze, plan, rebuild, refresh, validate, or improve repository wiki documentation through /home/almaz/TOOLS/repo-wiki-cli-skill when the user wants a reusable .repowiki structure, reference pack extraction, selective regeneration, hook-based freshness, or temp-clone validation on real repositories.
+triggers: repo-wiki, $repo-wiki, .repowiki, repo wiki, repository documentation, wiki generation, repo-wiki-cli-skill, reference pack, wiki regeneration, repo wiki validation
 ---
 
 # repo-wiki

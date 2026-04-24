@@ -1,0 +1,57 @@
+#!/bin/bash
+# Validate a 6-field task contract file.
+# Usage: mw-check-contract <file_path>
+# Returns 0 if valid, 1 if missing required fields.
+
+set -euo pipefail
+
+FILE_PATH=${1:-}
+
+if [ -z "$FILE_PATH" ]; then
+    echo "Usage: mw-check-contract <file_path>"
+    exit 1
+fi
+
+if [ ! -f "$FILE_PATH" ]; then
+    echo "Error: File not found: $FILE_PATH"
+    exit 1
+fi
+
+CONTENT=$(cat "$FILE_PATH")
+ERRORS=0
+
+check_field() {
+    local field="$1"
+    if echo "$CONTENT" | grep -q "^${field}:"; then
+        echo "  ✓ ${field}"
+    else
+        echo "  ✗ ${field} MISSING"
+        ERRORS=$((ERRORS + 1))
+    fi
+}
+
+echo "Checking contract: $FILE_PATH"
+echo ""
+echo "Required fields:"
+check_field "WORKDIR"
+check_field "CONTEXT"
+check_field "PROBLEM"
+check_field "TASK"
+check_field "DONE"
+check_field "REFERENCES"
+
+echo ""
+if echo "$CONTENT" | grep -q "STOP after completing this task"; then
+    echo "  ✓ STOP directive present"
+else
+    echo "  ⚠ STOP directive missing (recommended for isolated tasks)"
+fi
+
+echo ""
+if [ $ERRORS -eq 0 ]; then
+    echo "✅ Contract is valid (all required fields present)"
+    exit 0
+else
+    echo "❌ Contract has $ERRORS missing required field(s)"
+    exit 1
+fi

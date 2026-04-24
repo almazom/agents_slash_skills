@@ -1,0 +1,8 @@
+interface:
+  display_name: "Deep Review"
+  short_description: "Heavy 6-angle review with strict artifacts"
+  brand_color: "#1F6FEB"
+  default_prompt: "Use $deep-review for a heavy 6-reviewer code review with strict artifacts and optional Trello handoff."
+
+policy:
+  allow_implicit_invocation: false

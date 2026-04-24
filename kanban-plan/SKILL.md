@@ -1,6 +1,7 @@
 ---
 name: kanban-plan
 description: Create kanban-first repository plans by routing work into minimal, standard, or complex; materializing the portable kit into the repo planning root; validating the request; and writing a timestamped kanban JSON plus active pointer through /home/pets/TOOLS/kanban_plan_skill_cli.
+triggers: kanban-plan, $kanban-plan, kanban plan, create kanban, kanban JSON, kanban_plan_skill_cli, kanban planning, kanban-first plan
 ---
 
 # kanban-plan

@@ -1,6 +1,7 @@
 ---
 name: suno
 description: Use when the task is to operate the local Suno CLI toolkit in `/home/pets/TOOLS/suno_skill_cli`, including auth/session checks, `/me` library work, liked-feed sync and cache, exact random liked picks, song rename, song download, Telegram delivery, taste-aware Suno prompt generation, and Suno operator chain flows.
+triggers: suno, $suno, Suno CLI, suno_song_cli, suno auth, suno liked, suno download, suno prompt, song download, music generation, Suno song, liked feed sync
 ---
 
 # Suno

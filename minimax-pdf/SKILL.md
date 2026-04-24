@@ -12,6 +12,7 @@ description: >
   This skill uses a token-based design system: color, typography, and spacing are derived
   from the document type and flow through every page. The output is print-ready.
   Prefer this skill when appearance matters, not just when any PDF output is needed.
+triggers: minimax-pdf, PDF, generate PDF, create PDF, beautiful PDF, professional PDF, fill PDF form, reformat PDF, PDF design, cover page, print-ready PDF, PDF report, PDF proposal, PDF resume
 license: MIT
 metadata:
   version: "1.0"

@@ -8,6 +8,7 @@ description: >-
   pane, pane exit, tiled pane, vertical panes, horizontal panes, split pane,
   zj run, zj send, zj keys, zj close, zj chain, zj parallel, zj wait, zj
   tiled, zj floats, terminal multiplexer, pane management.
+triggers: zellij, $zellij, Zellij, zj, zj run, zj send, zj chain, zj parallel, floating pane, tiled pane, split pane, pane exit, terminal multiplexer, pane management, zj floats, zj tiled, zj close
 ---
 
 # Zellij Skill

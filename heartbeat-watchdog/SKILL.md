@@ -1,6 +1,7 @@
 ---
 name: heartbeat-watchdog
 description: Use when the task is to run or inspect the global `heartbeat-watchdog` observer on WezTerm panes, files, JSONL session logs, or glob patterns with periodic heartbeats, runtime logs, status, tail, and stop control.
+triggers: heartbeat-watchdog, $heartbeat-watchdog, heartbeat, watchdog, observer, pane observer, heartbeat-watchdog status, heartbeat-watchdog tail, heartbeat-watchdog stop, JSONL observer, pane heartbeat
 ---
 
 # Heartbeat Watchdog

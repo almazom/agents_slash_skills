@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cron Skill"
+  short_description: "Create, inspect, update, cancel, and nuke scheduled Codex cron pilot jobs"
+  default_prompt: "Use cron-skill when the task is to manage scheduled Codex jobs through the codex-cron CLI or MCP server, including create/get/list/update/cancel/nuke, fire-now, doctor, and cron-path debugging."

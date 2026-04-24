@@ -1,0 +1,4 @@
+interface:
+  display_name: "JSONL Digest Today"
+  short_description: "Digest today's JSONL by project."
+  default_prompt: "Review today's .codex/sessions JSONL across Mac, pets, and almaz; normalize temp worktrees to real projects; summarize what was worked on in simplified Russian."

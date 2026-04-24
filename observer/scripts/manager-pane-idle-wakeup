@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:$PATH"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+MANAGER_PANE=""
+WORKER_PANE=""
+WORKER_LABEL="Tahir"
+MESSAGE=""
+RUN_ROOT=""
+EVERY=60
+MAX_CYCLES=100
+IDLE_STREAK=1
+STUCK_STREAK=10
+WATCH_SECONDS=30
+SUBMIT_RETRIES=3
+NOTIFY_MATTERMOST=false
+MATTERMOST_MESSAGE=""
+MATTERMOST_WRAPPER="/Users/al/TOOLS/mattermost_to_me_cli/mattermost_to_me"
+DRY_RUN=false
+
+usage() {
+    cat <<'EOF'
+Usage: manager-pane-idle-wakeup --manager-pane <id> --worker-pane <id> [options]
+
+Options:
+  --manager-pane <id>      Target manager pane id
+  --worker-pane <id>       Observed worker pane id
+  --worker-label <label>   Worker label for logs and default message
+  --message <text>         Wakeup message; defaults to "<label> pane <id> idle..."
+  --run-root <path>        Optional log root
+  --every <seconds>        Heartbeat cadence (default: 60)
+  --max-cycles <n>         Maximum heartbeat count (default: 100)
+  --idle-streak <n>        Consecutive idle hints before wakeup (default: 1)
+  --stuck-streak <n>       Unchanged quiet heartbeats before PROBABLE_STUCK (default: 10)
+  --watch-seconds <n>      Manager wakeup watch window (default: 30)
+  --submit-retries <n>     Retry CR submit up to N times when waking the manager (default: 3)
+  --notify-mattermost      Also send the wakeup message through Mattermost only
+  --mattermost-message <text>
+                           Optional Mattermost text; defaults to the manager wakeup message
+  --mattermost-wrapper <path>
+                           Wrapper path for Mattermost sends (default: /Users/al/TOOLS/mattermost_to_me_cli/mattermost_to_me)
+  --dry-run                Inspect once and exit without waking the manager
+  --help                   Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --manager-pane)
+            MANAGER_PANE="${2:-}"
+            shift 2
+            ;;
+        --worker-pane)
+            WORKER_PANE="${2:-}"
+            shift 2
+            ;;
+        --worker-label)
+            WORKER_LABEL="${2:-}"
+            shift 2
+            ;;
+        --message)
+            MESSAGE="${2:-}"
+            shift 2
+            ;;
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        --every)
+            EVERY="${2:-}"
+            shift 2
+            ;;
+        --max-cycles)
+            MAX_CYCLES="${2:-}"
+            shift 2
+            ;;
+        --idle-streak)
+            IDLE_STREAK="${2:-}"
+            shift 2
+            ;;
+        --stuck-streak)
+            STUCK_STREAK="${2:-}"
+            shift 2
+            ;;
+        --watch-seconds)
+            WATCH_SECONDS="${2:-}"
+            shift 2
+            ;;
+        --submit-retries)
+            SUBMIT_RETRIES="${2:-}"
+            shift 2
+            ;;
+        --notify-mattermost)
+            NOTIFY_MATTERMOST=true
+            shift
+            ;;
+        --mattermost-message)
+            MATTERMOST_MESSAGE="${2:-}"
+            shift 2
+            ;;
+        --mattermost-wrapper)
+            MATTERMOST_WRAPPER="${2:-}"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$MANAGER_PANE" || -z "$WORKER_PANE" ]]; then
+    usage >&2
+    exit 1
+fi
+
+if [[ -z "$MESSAGE" ]]; then
+    MESSAGE="$WORKER_LABEL pane $WORKER_PANE idle. Inspect SSOT, decide next, do not stay idle."
+fi
+
+LOG_FILE=""
+HEARTBEATS_FILE=""
+WAKEUP_RESULT_FILE=""
+NOTIFY_RESULT_FILE=""
+if [[ -n "$RUN_ROOT" ]]; then
+    mkdir -p "$RUN_ROOT"
+    LOG_FILE="$RUN_ROOT/observer.log"
+    HEARTBEATS_FILE="$RUN_ROOT/observer-heartbeats.jsonl"
+    WAKEUP_RESULT_FILE="$RUN_ROOT/wakeup-result.json"
+    NOTIFY_RESULT_FILE="$RUN_ROOT/notify-result.json"
+fi
+
+timestamp_now() {
+    date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+append_log() {
+    local line="$1"
+    printf '%s\n' "$line"
+    if [[ -n "$LOG_FILE" ]]; then
+        printf '%s\n' "$line" >> "$LOG_FILE"
+    fi
+}
+
+append_jsonl() {
+    if [[ -n "$HEARTBEATS_FILE" ]]; then
+        printf '%s\n' "$1" >> "$HEARTBEATS_FILE"
+    fi
+}
+
+write_notify_result() {
+    local status="$1"
+    local exit_code="$2"
+    local message="$3"
+    if [[ -z "$NOTIFY_RESULT_FILE" ]]; then
+        return
+    fi
+    python3 - "$NOTIFY_RESULT_FILE" "$status" "$exit_code" "$message" "$MATTERMOST_WRAPPER" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+result_file, status, exit_code, message, wrapper = sys.argv[1:]
+payload = {
+    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    "status": status,
+    "exit_code": int(exit_code),
+    "message": message,
+    "wrapper": wrapper,
+}
+with open(result_file, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+print(json.dumps(payload, ensure_ascii=False))
+PY
+}
+
+hash_text() {
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+last_nonempty_line() {
+    printf '%s\n' "$1" | awk 'NF{line=$0} END{print line}'
+}
+
+worker_record() {
+    wezterm cli list --format json \
+        | jq -r --argjson pane "$WORKER_PANE" '.[] | select(.pane_id == $pane) | [.pane_id, .tty_name, .tab_id] | @tsv' \
+        | head -n 1
+}
+
+tee_path_from_ps() {
+    printf '%s\n' "$1" | awk '/tee .*iter-[0-9]+\.jsonl/{print $NF; exit}'
+}
+
+jsonl_size_for_path() {
+    local tee_path="$1"
+    if [[ -n "$tee_path" && -f "$tee_path" ]]; then
+        wc -c < "$tee_path" | tr -d ' '
+    else
+        printf '0'
+    fi
+}
+
+detect_state() {
+    local record="$1"
+    local text="$2"
+    local ps_out="$3"
+    local prev_text_hash="$4"
+    local prev_ps_hash="$5"
+    local prev_tee_path="$6"
+    local prev_jsonl_size="$7"
+    local quiet_count="$8"
+    local idle_count="$9"
+    local last_line="${10}"
+
+    local state="PROGRESS"
+    local new_quiet_count="$quiet_count"
+    local new_idle_count="$idle_count"
+
+    if [[ -z "$record" ]]; then
+        printf 'GONE\t%s\t%s\t%s\t%s\t%s\t%s' "$quiet_count" "$idle_count" "-" "-" "none" "0"
+        return
+    fi
+
+    local text_hash
+    text_hash="$(hash_text "$text")"
+    local ps_hash
+    ps_hash="$(hash_text "$ps_out")"
+    local tee_path
+    tee_path="$(tee_path_from_ps "$ps_out")"
+    local jsonl_size
+    jsonl_size="$(jsonl_size_for_path "$tee_path")"
+
+    local idle_hint=false
+    if [[ "$last_line" =~ ^[[:space:]]*›[[:space:]] ]] || [[ "$last_line" == *"Implement {feature}"* ]]; then
+        idle_hint=true
+    elif [[ "$last_line" =~ [\$%#][[:space:]]*$ ]]; then
+        idle_hint=true
+    fi
+
+    if [[ "$idle_hint" == "true" ]]; then
+        new_idle_count=$((idle_count + 1))
+        new_quiet_count=0
+        if (( new_idle_count >= IDLE_STREAK )); then
+            state="IDLE"
+        else
+            state="QUIET"
+        fi
+    elif [[ -n "$prev_text_hash" && "$text_hash" == "$prev_text_hash" && "$ps_hash" == "$prev_ps_hash" ]]; then
+        new_idle_count=0
+        if [[ "$tee_path" != "$prev_tee_path" || "$jsonl_size" != "$prev_jsonl_size" ]]; then
+            new_quiet_count=0
+            state="PROGRESS"
+        else
+            new_quiet_count=$((quiet_count + 1))
+            if (( new_quiet_count >= STUCK_STREAK )); then
+                state="PROBABLE_STUCK"
+            else
+                state="QUIET"
+            fi
+        fi
+    else
+        new_idle_count=0
+        new_quiet_count=0
+        state="PROGRESS"
+    fi
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s' "$state" "$new_quiet_count" "$new_idle_count" "$text_hash" "$ps_hash" "${tee_path:-none}" "$jsonl_size"
+}
+
+CYCLE=0
+PREV_TEXT_HASH=""
+PREV_PS_HASH=""
+PREV_TEE_PATH="none"
+PREV_JSONL_SIZE="0"
+QUIET_COUNT=0
+IDLE_COUNT=0
+
+append_log "START ts=$(timestamp_now) manager_pane=$MANAGER_PANE worker_pane=$WORKER_PANE label=$WORKER_LABEL cadence=${EVERY}s"
+
+while (( CYCLE < MAX_CYCLES )); do
+    CYCLE=$((CYCLE + 1))
+    RECORD="$(worker_record)"
+
+    if [[ -n "$RECORD" ]]; then
+        TTY_DEV="$(printf '%s\n' "$RECORD" | awk -F'\t' '{print $2}')"
+        TTY_NAME="${TTY_DEV#/dev/}"
+        TEXT="$(wezterm cli get-text --pane-id "$WORKER_PANE" --start-line -120 2>/dev/null | tail -n 60 || true)"
+        PS_OUT="$(ps -t "$TTY_NAME" -o pid=,ppid=,state=,etime=,command= 2>/dev/null || true)"
+        LAST_LINE="$(last_nonempty_line "$TEXT")"
+    else
+        TTY_NAME=""
+        TEXT=""
+        PS_OUT=""
+        LAST_LINE=""
+    fi
+
+    DETECTED="$(detect_state "$RECORD" "$TEXT" "$PS_OUT" "$PREV_TEXT_HASH" "$PREV_PS_HASH" "$PREV_TEE_PATH" "$PREV_JSONL_SIZE" "$QUIET_COUNT" "$IDLE_COUNT" "$LAST_LINE")"
+    STATE="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $1}')"
+    QUIET_COUNT="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $2}')"
+    IDLE_COUNT="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $3}')"
+    TEXT_HASH="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $4}')"
+    PS_HASH="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $5}')"
+    TEE_PATH="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $6}')"
+    JSONL_SIZE="$(printf '%s\n' "$DETECTED" | awk -F'\t' '{print $7}')"
+    TAB_ID="$(printf '%s\n' "$RECORD" | awk -F'\t' '{print $3}')"
+
+    TS="$(timestamp_now)"
+    HEARTBEAT_LINE="HEARTBEAT ts=$TS state=$STATE quiet=$QUIET_COUNT idle=$IDLE_COUNT pane=$WORKER_PANE tab=${TAB_ID:-none} tty=${TTY_NAME:-none} jsonl_size=$JSONL_SIZE tee=${TEE_PATH:-none}"
+    append_log "$HEARTBEAT_LINE"
+    append_jsonl "{\"timestamp_utc\":\"$TS\",\"cycle\":$CYCLE,\"state\":\"$STATE\",\"worker_pane\":\"$WORKER_PANE\",\"tab_id\":\"${TAB_ID:-}\",\"tty\":\"${TTY_NAME:-}\",\"quiet_count\":$QUIET_COUNT,\"idle_count\":$IDLE_COUNT,\"tee_path\":\"${TEE_PATH:-none}\",\"jsonl_size\":$JSONL_SIZE}"
+
+    PREV_TEXT_HASH="$TEXT_HASH"
+    PREV_PS_HASH="$PS_HASH"
+    PREV_TEE_PATH="$TEE_PATH"
+    PREV_JSONL_SIZE="$JSONL_SIZE"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        exit 0
+    fi
+
+    if [[ "$STATE" == "IDLE" || "$STATE" == "GONE" ]]; then
+        append_log "WAKEUP ts=$TS reason=$STATE message=$MESSAGE"
+        NOTE_ARGS=(
+            --manager-pane "$MANAGER_PANE"
+            --message "$MESSAGE"
+            --watch-seconds "$WATCH_SECONDS"
+            --submit-retries "$SUBMIT_RETRIES"
+        )
+        if [[ -n "$WAKEUP_RESULT_FILE" ]]; then
+            NOTE_ARGS+=(--result-file "$WAKEUP_RESULT_FILE")
+        fi
+        if "$SCRIPT_DIR/manager-note-to-manager" "${NOTE_ARGS[@]}"; then
+            EXIT_CODE=0
+        else
+            EXIT_CODE=$?
+        fi
+
+        NOTIFY_STATUS="not_requested"
+        NOTIFY_EXIT=0
+        MATTERMOST_PAYLOAD="${MATTERMOST_MESSAGE:-$MESSAGE}"
+        if [[ "$NOTIFY_MATTERMOST" == "true" ]]; then
+            if [[ -x "$MATTERMOST_WRAPPER" ]]; then
+                if "$MATTERMOST_WRAPPER" --only mattermost "$MATTERMOST_PAYLOAD"; then
+                    NOTIFY_STATUS="sent"
+                else
+                    NOTIFY_EXIT=$?
+                    NOTIFY_STATUS="failed"
+                fi
+            else
+                NOTIFY_EXIT=127
+                NOTIFY_STATUS="wrapper_missing"
+            fi
+            write_notify_result "$NOTIFY_STATUS" "$NOTIFY_EXIT" "$MATTERMOST_PAYLOAD"
+            append_log "NOTIFY ts=$(timestamp_now) status=$NOTIFY_STATUS exit=$NOTIFY_EXIT"
+        fi
+
+        append_log "END ts=$(timestamp_now) reason=$STATE wakeup_exit=$EXIT_CODE notify_status=$NOTIFY_STATUS"
+        exit "$EXIT_CODE"
+    fi
+
+    if (( CYCLE >= MAX_CYCLES )); then
+        break
+    fi
+
+    sleep "$EVERY"
+done
+
+append_log "END ts=$(timestamp_now) reason=max_cycles state=${STATE:-unknown}"
+exit 0

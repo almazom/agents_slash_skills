@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:$PATH"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+MANAGER_PANE=""
+WORKER_PANE=""
+WORKER_LABEL="Tahir"
+MESSAGE=""
+RUN_ROOT=""
+HEIGHT=18
+EVERY=60
+MAX_CYCLES=100
+IDLE_STREAK=1
+STUCK_STREAK=10
+WATCH_SECONDS=30
+SUBMIT_RETRIES=3
+NOTIFY_MATTERMOST=false
+MATTERMOST_MESSAGE=""
+MATTERMOST_WRAPPER="/Users/al/TOOLS/mattermost_to_me_cli/mattermost_to_me"
+DRY_RUN=false
+
+usage() {
+    cat <<'EOF'
+Usage: observer-under-worker --manager-pane <id> --worker-pane <id> [options]
+
+Options:
+  --manager-pane <id>      Target manager pane id
+  --worker-pane <id>       Worker pane id to observe from below
+  --worker-label <label>   Worker label for logs and default message
+  --message <text>         Wakeup message; defaults to "<label> pane <id> idle..."
+  --run-root <path>        Optional observer run root
+  --height <percent>       Observer pane height percent (default: 18)
+  --every <seconds>        Heartbeat cadence (default: 60)
+  --max-cycles <n>         Maximum heartbeat count (default: 100)
+  --idle-streak <n>        Consecutive idle hints before wakeup (default: 1)
+  --stuck-streak <n>       Unchanged quiet heartbeats before PROBABLE_STUCK (default: 10)
+  --watch-seconds <n>      Manager wakeup watch window (default: 30)
+  --submit-retries <n>     Retry CR submit up to N times when waking the manager (default: 3)
+  --notify-mattermost      Also send the wakeup message through Mattermost only
+  --mattermost-message <text>
+                           Optional Mattermost text; defaults to the manager wakeup message
+  --mattermost-wrapper <path>
+                           Wrapper path for Mattermost sends (default: /Users/al/TOOLS/mattermost_to_me_cli/mattermost_to_me)
+  --dry-run                Print the launch command without spawning the pane
+  --help                   Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --manager-pane)
+            MANAGER_PANE="${2:-}"
+            shift 2
+            ;;
+        --worker-pane)
+            WORKER_PANE="${2:-}"
+            shift 2
+            ;;
+        --worker-label)
+            WORKER_LABEL="${2:-}"
+            shift 2
+            ;;
+        --message)
+            MESSAGE="${2:-}"
+            shift 2
+            ;;
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        --height)
+            HEIGHT="${2:-}"
+            shift 2
+            ;;
+        --every)
+            EVERY="${2:-}"
+            shift 2
+            ;;
+        --max-cycles)
+            MAX_CYCLES="${2:-}"
+            shift 2
+            ;;
+        --idle-streak)
+            IDLE_STREAK="${2:-}"
+            shift 2
+            ;;
+        --stuck-streak)
+            STUCK_STREAK="${2:-}"
+            shift 2
+            ;;
+        --watch-seconds)
+            WATCH_SECONDS="${2:-}"
+            shift 2
+            ;;
+        --submit-retries)
+            SUBMIT_RETRIES="${2:-}"
+            shift 2
+            ;;
+        --notify-mattermost)
+            NOTIFY_MATTERMOST=true
+            shift
+            ;;
+        --mattermost-message)
+            MATTERMOST_MESSAGE="${2:-}"
+            shift 2
+            ;;
+        --mattermost-wrapper)
+            MATTERMOST_WRAPPER="${2:-}"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$MANAGER_PANE" || -z "$WORKER_PANE" ]]; then
+    usage >&2
+    exit 1
+fi
+
+if [[ -z "$RUN_ROOT" ]]; then
+    RUN_ROOT="${PWD}/.codex/observer-runs/$(date -u +%Y%m%dT%H%M%SZ)"
+fi
+mkdir -p "$RUN_ROOT"
+
+if [[ -z "$MESSAGE" ]]; then
+    MESSAGE="$WORKER_LABEL pane $WORKER_PANE idle. Inspect SSOT, decide next, do not stay idle."
+fi
+
+ARGS=(
+    "$SCRIPT_DIR/manager-pane-idle-wakeup"
+    --manager-pane "$MANAGER_PANE"
+    --worker-pane "$WORKER_PANE"
+    --worker-label "$WORKER_LABEL"
+    --message "$MESSAGE"
+    --run-root "$RUN_ROOT"
+    --every "$EVERY"
+    --max-cycles "$MAX_CYCLES"
+    --idle-streak "$IDLE_STREAK"
+    --stuck-streak "$STUCK_STREAK"
+    --watch-seconds "$WATCH_SECONDS"
+    --submit-retries "$SUBMIT_RETRIES"
+)
+
+if [[ "$NOTIFY_MATTERMOST" == "true" ]]; then
+    ARGS+=(--notify-mattermost)
+fi
+if [[ -n "$MATTERMOST_MESSAGE" ]]; then
+    ARGS+=(--mattermost-message "$MATTERMOST_MESSAGE")
+fi
+if [[ -n "$MATTERMOST_WRAPPER" ]]; then
+    ARGS+=(--mattermost-wrapper "$MATTERMOST_WRAPPER")
+fi
+
+printf -v QUOTED '%q ' "${ARGS[@]}"
+LAUNCH_CMD="export PATH=\"/opt/homebrew/bin:\$PATH\"; printf '\\033]0;Observer heartbeat\\a'; exec ${QUOTED% }"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    printf 'RUN_ROOT=%s\n' "$RUN_ROOT"
+    printf 'LAUNCH_CMD=%s\n' "$LAUNCH_CMD"
+    exit 0
+fi
+
+OBSERVER_PANE="$(
+    wezterm cli split-pane \
+        --pane-id "$WORKER_PANE" \
+        --bottom \
+        --percent "$HEIGHT" \
+        -- /opt/homebrew/bin/bash -lc "$LAUNCH_CMD"
+)"
+
+sleep 1
+
+printf 'OBSERVER_PANE=%s\n' "$OBSERVER_PANE"
+printf 'RUN_ROOT=%s\n' "$RUN_ROOT"
+wezterm cli get-text --pane-id "$OBSERVER_PANE" --start-line -40 | tail -n 20 || true

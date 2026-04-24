@@ -1,6 +1,12 @@
 ---
 name: implementation-skill
-description: Execute the current actionable Trello package card from /home/almaz/TOOLS/split_to_tasks_skill_cli, using implementation-start, implementation-stage, and implementation-status while keeping kanban.json as the only writable execution SSOT.
+description: >-
+  Execute the current actionable Trello package card from
+  `/home/almaz/TOOLS/split_to_tasks_skill_cli`, using `implementation-start`,
+  `implementation-stage`, and `implementation-status` while keeping
+  `kanban.json` as the only writable execution SSOT. Triggers on:
+  `implementation-skill`, `$implementation-skill`, `$implementation`.
+triggers: implementation-skill, $implementation-skill, $implementation, implementation-start, implementation-stage, implementation-status, implement card, kanban implementation, Trello package implementation
 ---
 
 # implementation-skill

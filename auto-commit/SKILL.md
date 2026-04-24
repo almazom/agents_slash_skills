@@ -1,6 +1,7 @@
 ---
 name: auto-commit
-description: "Follow a literal auto-commit workflow for git worktrees: start with `git status`, read all changes, organize them into atomic commits, run fitting linters, scan diffs for secrets, think about `.gitignore`, generate short imperative commit messages, and push with `gh` or create a remote if none exists. Use when Codex is asked to commit everything shown in git status and the user wants the workflow kept close to a provided source text, with simplified Russian, emoji, and very short numbered reasoning bullets."
+description: "Follow a literal auto-commit workflow for git worktrees: start with `git status`, read all changes, organize them into atomic commits, run fitting linters, scan diffs for secrets, think about `.gitignore`, generate short imperative commit messages, and push with `gh` or create a remote if none exists. Also bootstrap brand-new repositories with `git init` and GitHub CLI when the user wants publish-ready commit flow. Use when Codex is asked to commit everything shown in git status and the user wants the workflow kept close to a provided source text, with simplified Russian, emoji, and very short numbered reasoning bullets."
+triggers: auto-commit, $auto-commit, auto commit, commit all, git commit, atomic commit, commit and push, linter commit
 ---
 
 # Auto Commit
@@ -50,6 +51,15 @@ Treat the source text below as the canonical workflow. Keep it word-for-word and
   - prefer branch `main`
   - create the remote with `gh repo create <repo-name> --source=. --remote=origin --push` or an equivalent non-interactive GitHub CLI flow
 - If no remote exists and the user did not ask to publish the repository, finish the local commit workflow, report that push was not applicable, and do not fabricate a remote-creation flow.
+
+## New Repo Bootstrap Rule
+
+- Treat a brand-new repository as a normal `$auto-commit` case, not as a special blocker.
+- If `.git` is missing and the user wants commit or publish flow, run `git init` first, then re-run `git status` and continue the same workflow.
+- For a new repository with no branch yet, prefer `main` as the target branch name.
+- If the push or remote flow is unclear, inspect `gh --help` first, then use the specific GitHub CLI help that resolves the next step, such as `gh repo create --help`.
+- If there is no commit history to infer style from, fall back to short imperative commit subjects that still match the rest of this skill.
+- If the user explicitly wants a new GitHub repository, treat `gh repo create ... --source=. --remote=origin --push` as the default non-interactive shape unless repository policy or auth state requires a safer variant.
 
 ## TypeScript / Bun checks
 

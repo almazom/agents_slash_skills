@@ -143,6 +143,72 @@ wezterm cli activate-tab --tab-relative -1       # move left 1 tab (wraps)
 wezterm cli activate-tab --tab-relative 1 --no-wrap
 wezterm cli set-tab-title "New Title"            # rename current tab
 wezterm cli set-tab-title --tab-id 1 "Build"     # rename specific tab
+wezterm cli set-tab-title --pane-id 5 "Build"    # rename tab containing pane 5
+```
+
+### set-tab-title — Tab Rename Details
+
+**Purpose:** Change the display title of a tab. The title appears in the tab bar at the top of the WezTerm window.
+
+**Syntax:**
+```
+wezterm cli set-tab-title [OPTIONS] <TITLE>
+```
+
+**Options:**
+| Option | Meaning |
+|---|---|
+| `--tab-id <ID>` | Target tab by its tab ID (from `wezterm cli list`) |
+| `--pane-id <ID>` | Target the tab containing this pane (default: `$WEZTERM_PANE`) |
+
+**Important notes:**
+- The title is stored per-tab, not per-pane. If a tab has multiple panes, the title applies to the whole tab.
+- **Title length limit:** WezTerm accepts very long titles (500+ chars), but the tab bar truncates display based on available space. The visible width is determined by `tab_max_width` config (default ~32 cells) and the number of open tabs sharing the tab bar.
+- **`format-tab-title` overrides CLI title:** If the Lua config has a `format-tab-title` event handler, it overrides the CLI-set title. To use `set-tab-title` directly, remove or disable `format-tab-title` in the config.
+- **`wezterm cli list` shows process title, not tab title.** The TITLE column reflects the running process name, not the custom tab title set via CLI.
+- To verify the tab title was set, check the tab bar visually or use the Lua API.
+
+**Examples:**
+```bash
+# Rename current tab (uses $WEZTERM_PANE to find tab)
+wezterm cli set-tab-title "My Build"
+
+# Rename by specific tab ID
+wezterm cli set-tab-title --tab-id 20 "Deploy Worker"
+
+# Rename by pane ID (finds the tab containing that pane)
+wezterm cli set-tab-title --pane-id 78 "Test Runner"
+
+# Set very long title to test max width (WezTerm accepts it, tab bar truncates display)
+wezterm cli set-tab-title --tab-id 20 "$(python3 -c "print('1234567890' * 50)")"
+
+# Reset to default (process-controlled) title
+wezterm cli set-tab-title ""
+```
+
+### Tab Title Width / Length Behavior
+
+| Factor | Effect |
+|---|---|
+| `tab_max_width` config (default ~32) | Hard cap on tab title cell width |
+| Window width | Wider window = more room per tab |
+| Number of tabs | More tabs = less space per tab |
+| Active tab priority | Active tab often gets more width than inactive tabs |
+| `format-tab-title` Lua event | If present, **overrides** all other title sources |
+| `use_fancy_tab_bar` | Fancy vs retro tab bar affects rendering |
+| Pane process title | Shell cwd/command updates pane title automatically |
+
+**How to fill tab to max width for testing (Lua):**
+```lua
+wezterm.on('format-tab-title', function(tab, tabs, panes, config, hover, max_width)
+  local title = tab.active_pane.title or ''
+  local info = string.format('%d:%s [%d/%d]', tab.tab_index + 1, title, #title, max_width)
+  local pad = max_width - #info
+  if pad > 0 then
+    info = info .. string.rep('·', pad)  -- fill remaining cells
+  end
+  return info
+end)
 ```
 
 ## Window & Workspace

@@ -1,6 +1,7 @@
 ---
 name: kiselev-read
 description: Read-only observability and analytics skill only for Denis Kiselev's DEKSDEN channel and paired chat. Use when the task refers to `kiselev-read`, `kiselev-week`, Denis Kiselev, DEKSDEN, deksden_notes, or DEKSDEN chat and needs fetch, inspection, explanation, analytics, comparison, timeline, or the fixed weekly report format for `@deksden_notes` and `DEKSDEN (chat)` together. Inside this skill, `оба источника`, `две ленты`, `канал + чат`, or `вместе` always mean DEKSDEN channel plus DEKSDEN chat, never ИИшница.
+triggers: kiselev-read, kiselev-week, Denis Kiselev, DEKSDEN, deksden_notes, DEKSDEN chat, kiselev analytics, kiselev timeline, weekly report kiselev
 ---
 
 # kiselev-read

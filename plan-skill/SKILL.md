@@ -1,6 +1,15 @@
 ---
 name: plan-skill
-description: Create or harden a decision-complete implementation plan using the installed `plan_skill_cli_v2` runtime. Resolve the runtime root by preferring `/home/pets/TOOLS/plan_skill_cli_v2` and falling back to `/home/almaz/TOOLS/plan_skill_cli_v2` when needed. Use when the user wants a planning-first workflow, wants an implementation-ready markdown plan before coding, or wants the plan plus self-QA and quality-loop gates to produce one canonical IMPLEMENTATION_PLAN.md artifact.
+description: >-
+  Create or harden a decision-complete implementation plan using the installed
+  `plan_skill_cli_v2` runtime. Resolve the runtime root by preferring
+  `/home/pets/TOOLS/plan_skill_cli_v2` and falling back to
+  `/home/almaz/TOOLS/plan_skill_cli_v2` when needed. Use when the user wants a
+  planning-first workflow, wants an implementation-ready markdown plan before
+  coding, or wants the plan plus self-QA and quality-loop gates to produce one
+  canonical `IMPLEMENTATION_PLAN.md` artifact. Triggers on: `plan-skill`,
+  `$plan-skill`, `$plan`.
+triggers: plan-skill, $plan-skill, $plan, implementation plan, plan_skill_cli_v2, IMPLEMENTATION_PLAN.md, planning workflow, plan before code, quality-loop plan, self-QA plan
 ---
 
 # plan-skill

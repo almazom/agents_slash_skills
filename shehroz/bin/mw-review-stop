@@ -1,0 +1,104 @@
+#!/bin/bash
+# Review the stop-hook output and nearby run artifacts for a spawned worker run.
+# Usage: mw-review-stop --run-root /tmp/run-root [--pane-id 12] [--no-cleanup-hook]
+
+set -euo pipefail
+
+RUN_ROOT=""
+PANE_ID=""
+CLEANUP_HOOK=true
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        --pane-id)
+            PANE_ID="${2:-}"
+            shift 2
+            ;;
+        --cleanup-hook)
+            CLEANUP_HOOK=true
+            shift
+            ;;
+        --no-cleanup-hook)
+            CLEANUP_HOOK=false
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$RUN_ROOT" ]]; then
+    echo "Usage: mw-review-stop --run-root /tmp/run-root [--pane-id 12] [--no-cleanup-hook]" >&2
+    exit 1
+fi
+
+TASK_FILE="$RUN_ROOT/prompts/task.txt"
+RESULTS_DIR="$RUN_ROOT/results"
+STOP_EVENT="$RESULTS_DIR/stop-hook-event.json"
+
+echo "RUN_ROOT: $RUN_ROOT"
+if [[ -f "$TASK_FILE" ]]; then
+    echo "TASK_FILE: $TASK_FILE"
+fi
+if [[ -f "$STOP_EVENT" ]]; then
+    echo "STOP_EVENT: $STOP_EVENT"
+    python3 - "$STOP_EVENT" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+
+print(f"STATE_HINT: {data.get('state_hint')}")
+print(f"TASK_ID: {data.get('task_id')}")
+print(f"STOP_TURN: {data.get('turn_id')}")
+print(f"NEXT_ACTION: {data.get('next_action')}")
+PY
+fi
+
+echo ""
+echo "RESULT FILES:"
+if [[ -d "$RESULTS_DIR" ]]; then
+    find "$RESULTS_DIR" -maxdepth 1 -type f | sort
+else
+    echo "(missing results dir)"
+fi
+
+if [[ -n "$PANE_ID" ]]; then
+    SNAPSHOT="$RESULTS_DIR/review-pane-tail.txt"
+    wezterm cli get-text --pane-id "$PANE_ID" --start-line -100 > "$SNAPSHOT"
+    echo ""
+    echo "PANE_SNAPSHOT: $SNAPSHOT"
+fi
+
+echo ""
+echo "Next review steps:"
+echo "1. Read the task file."
+echo "2. Read stop-hook-event.json if present."
+echo "3. Read worker log and proof files in results/."
+echo "4. Compare those artifacts against DONE before reporting outcome."
+
+if [[ "$CLEANUP_HOOK" == "true" ]]; then
+    /Users/al/.agents/skills/shehroz/bin/mw-remove-stop-hook --run-root "$RUN_ROOT"
+    CLEANUP_NOTE="$RESULTS_DIR/hook-runtime-cleanup-note.txt"
+    cat > "$CLEANUP_NOTE" <<'EOF'
+Truthful stop-hook cleanup requires both:
+1. filesystem truth: the repo-local .codex/hooks.json has been removed or restored
+2. runtime truth: any live Codex session that loaded the old hook before cleanup is replaced or restarted
+
+If repeated identical wakeup lines continue after file cleanup, treat that as a stale loaded hook runtime in the live session, not as proof that file cleanup failed.
+EOF
+    echo "5. Temporary repo-local Stop hook cleaned for the next run."
+    echo "6. Runtime cleanup note: $CLEANUP_NOTE"
+    echo "7. If repeated identical wakeups continue, replace or restart the affected live Codex session before trusting future stop messages."
+else
+    echo "5. Repo-local Stop hook is still installed."
+    echo "6. Clean it before the next run, or repeated stale wakeups may continue:"
+    echo "   mw-remove-stop-hook --run-root \"$RUN_ROOT\""
+fi

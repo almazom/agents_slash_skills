@@ -1,6 +1,7 @@
 ---
 name: sdd-qa-wall
 description: Run a strict SDD QA wall interview before implementation with confidence/approval gates and dual outputs (single SDD or Kanban/Trello card package). Use when requirements are raw, volatile, fragmented, incomplete, or when user invokes $sdd-qa-wall.
+triggers: sdd-qa-wall, $sdd-qa-wall, SDD, QA wall, requirements gate, requirements interview, SDD QA, confidence gate, approval gate, pre-implementation requirements, SDD plan
 ---
 
 # SDD QA Wall

@@ -10,10 +10,28 @@ fi
 
 chmod +x "$skill_root"/scripts/*.sh
 
-ssh pets_proxy_ssh 'mkdir -p /home/pets/.agents/skills && rm -rf /home/pets/.agents/skills/ssh-mesh'
-scp -r "$skill_root" pets_proxy_ssh:/home/pets/.agents/skills/
+targets=("$@")
+if [ ${#targets[@]} -eq 0 ]; then
+  targets=(pets_proxy_ssh)
+fi
 
-ssh almaz-server 'mkdir -p /home/almaz/.agents/skills && rm -rf /home/almaz/.agents/skills/ssh-mesh'
-scp -r "$skill_root" almaz-server:/home/almaz/.agents/skills/
+for target in "${targets[@]}"; do
+  case "$target" in
+    pets|pets-proxy|pets_proxy_ssh)
+      remote_root="/home/pets/.agents/skills"
+      ;;
+    almaz|almaz-server|almaz_contabo)
+      remote_root="/home/almaz/.agents/skills"
+      ;;
+    *)
+      echo "unsupported target: $target" >&2
+      echo "supported targets: pets_proxy_ssh almaz-server" >&2
+      exit 1
+      ;;
+  esac
 
-echo "synced ssh-mesh to pets and almaz"
+  ssh "$target" "mkdir -p '$remote_root' && rm -rf '$remote_root/ssh-mesh'"
+  scp -r "$skill_root" "$target:$remote_root/"
+done
+
+echo "synced ssh-mesh to: ${targets[*]}"

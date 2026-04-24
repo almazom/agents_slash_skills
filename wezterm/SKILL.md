@@ -12,7 +12,10 @@ description: >-
   wezterm, replace zellij with wezterm, left pane, right pane,
   observe pane, read pane, send text to pane, split pane, activate pane,
   wezterm cli, pane monitor, pane observer, WEZTERM_PANE, terminal
-  multiplexer, cross-pane control, headless session, prefer-mux.
+  multiplexer, cross-pane control, headless session, prefer-mux,
+  wezterm theme, change theme, color scheme, sshmux_theme, Watch Moss,
+  Watch Brass, warm theme, earthy theme, olive theme, terminal colors.
+triggers: wezterm, $wezterm, WezTerm, wezterm cli, split-pane, wezterm mux, sshmux, observe pane, read pane, send text to pane, split pane, WEZTERM_PANE, pane monitor, pane observer, headless mux, prefer-mux, terminal multiplexer, wezterm theme, sshmux_theme, color scheme, Watch Moss, Watch Brass, terminal colors
 allowed-tools: Bash
 ---
 
@@ -34,6 +37,10 @@ Observe, read, and control WezTerm terminal panes via `wezterm cli`.
 - Generic shell operations (no WezTerm involvement)
 - tmux or zellij management (unless explicitly migrating away from them)
 - Abstract orchestration advice without WezTerm execution
+
+When the task is specifically about proving whether a message really crossed
+from one pane into another pane, or whether interactive Codex prompt delivery
+worked, pair this skill with `$pane-to-pane-communication`.
 
 ## Choose a Mode
 
@@ -58,7 +65,21 @@ These apply on every activation regardless of mode.
 
 4. **Do not silently switch modes.** If you started in GUI mode, stay in GUI mode. If headless, stay headless.
 
-5. **Prefer repo-native launchers.** If the repo has a launcher script, use it. Only fall back to raw `wezterm cli` when none exists.
+5. **Protect live tabs.** If the current tab contains protected live panes, or the operator asks for isolation, create or use a separate workbench tab in the same window before any split/kill operations.
+
+6. **Prefer repo-native launchers.** If the repo has a launcher script, use it. Only fall back to raw `wezterm cli` when none exists.
+7. **On macOS, force Homebrew Bash for `codex_wp` pane launches.** When a
+   `split-pane` child will run `codex_wp`, start it through
+   `/opt/homebrew/bin/bash -lc` and prepend
+   `PATH="/opt/homebrew/bin:$PATH"` before `codex_wp` starts. This keeps the
+   wrapper on Bash 5.x instead of `/bin/bash` 3.2 and avoids the
+   `review_config_args[@]: unbound variable` crash.
+8. **For live Codex-pane delivery, injection alone is not delivery.** If text
+   is sent into a visible Codex pane for real work or wakeup, the truthful
+   sequence is:
+   `send-text -> submit -> 30s observation`.
+   A line left visible in the input field without submit is only
+   `unsent visible`.
 
 ## Observer + Worker Model
 
@@ -85,6 +106,23 @@ Fallback examples: `🚀🟦 [skill:wezterm] ON ...`, `🛠️🟦 [skill:wezter
 WORKER_ID=$(wezterm cli split-pane --pane-id "${WEZTERM_PANE:?}" --right --percent 50 -- bash -lc 'exec bash')
 ```
 
+### Split pane right (visible `codex_wp` on macOS)
+
+```bash
+PROMPT='Reply with exactly one line and nothing else: 3'
+WORKER_ID=$(wezterm cli split-pane --pane-id "${WEZTERM_PANE:?}" --right --percent 50 -- /opt/homebrew/bin/bash -lc 'export PATH="/opt/homebrew/bin:$PATH"; cd "$PWD" && exec codex_wp --no-alt-screen '"'"'"$PROMPT"'"'"'')
+```
+
+Use this shape when the pane itself should open straight into an interactive
+Codex run. Do not replace it with `codex_wp exec` when the operator expects a
+visible live worker; `exec` is the headless one-shot mode.
+
+### Spawn a separate workbench tab
+
+```bash
+WORKBENCH_ID=$(wezterm cli spawn --window-id "$WINDOW_ID" --cwd "$PWD" -- bash -lc 'printf "WORKBENCH READY pane=%s\n" "$WEZTERM_PANE"; exec bash -l')
+```
+
 ### Read adjacent pane
 
 ```bash
@@ -102,11 +140,32 @@ wezterm cli send-text --pane-id "$WORKER" --no-paste "ls -la"$'\x0d'
 wezterm cli send-text --pane-id "$WORKER" --no-paste $'\x03'
 ```
 
+### Submit a real Codex wakeup/instruction
+
+```bash
+wezterm cli send-text --pane-id "$TARGET" --no-paste "Tahir pane 68 idle. Inspect now."
+sleep 0.3
+wezterm cli send-text --pane-id "$TARGET" --no-paste $'\r'
+sleep 30
+wezterm cli get-text --pane-id "$TARGET" --start-line -80 | tail -40
+```
+
+Do not call this delivered if the line only became visible in the pane. For a
+truthful wakeup or instruction, require submit plus the post-submit watch.
+
 ### List all panes
 
 ```bash
 wezterm cli list --format json
 wezterm cli --prefer-mux list          # headless
+```
+
+### Rename tab
+
+```bash
+wezterm cli set-tab-title "New Title"                # current tab
+wezterm cli set-tab-title --tab-id 20 "Build"        # by tab ID
+wezterm cli set-tab-title --pane-id 78 "Test"        # by pane ID
 ```
 
 ### Kill pane
@@ -135,6 +194,7 @@ Read these files **only when the fast paths are not enough**.
 | Why spawn diagnostics + ongoing observation | `references/EXPLANATION-observability-lifecycle.md` |
 | Domain types, SSHMUX architecture, config structs | `references/REFERENCE-sshmux-architecture.md` |
 | Shell integration, user vars, OSC 7, cwd tracking | `references/REFERENCE-shell-integration.md` |
+| Theme creation, switching, taste operator, color direction | `references/HOWTO-theme.md` |
 | Verify environment works | `references/TUTORIAL-smoke-test.md` |
 
 Resolve paths relative to the skill directory.

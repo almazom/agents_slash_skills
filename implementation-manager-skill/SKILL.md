@@ -1,6 +1,7 @@
 ---
 name: implementation-manager-skill
 description: Run a managed observed implementation session over a Trello-style package by launching card-scoped `codex_wp` workers in floating Zellij panes while the manager keeps lifecycle control.
+triggers: implementation-manager-skill, $implementation-manager-skill, implementation manager, managed implementation, zellij implementation, codex_wp implementation, card-scoped worker, implementation session
 ---
 
 # implementation-manager-skill

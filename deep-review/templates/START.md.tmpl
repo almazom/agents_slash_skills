@@ -1,0 +1,81 @@
+# SDD Implementation Start
+
+Package: `{{package_id}}`
+Package dir: `{{package_dir}}`
+
+Created at: `{{created_at}}`
+Source focus: `{{source_focus}}`
+
+## Resume Here
+
+- SSOT: `{{kanban_path}}`
+- Trello board artifact: `{{board_json_path}}`
+- Trello card bridge: `{{cards_json_path}}`
+- Trello move journal: `{{moves_jsonl_path}}`
+- Board URL: `{{board_url}}`
+
+Safe rerun order:
+
+1. Read `{{kanban_path}}`
+2. Read `{{cards_json_path}}`
+3. Read `{{moves_jsonl_path}}`
+4. If Trello was not exported yet, run board creation and export first
+5. Resume only the next truthful lane move
+
+## Current State
+
+- Backlog: {{backlog_count}}
+- In progress: {{in_progress_count}}
+- Blocked: {{blocked_count}}
+- Review: {{review_count}}
+- Simplification: {{simplification_count}}
+- Auto-commit: {{auto_commit_count}}
+- Done: {{done_count}}
+- Total points: {{total_points}}
+- Completed points: {{completed_points}}
+
+## Working Rules
+
+1. Keep each card between `2` and `4` story points.
+2. Treat `parallel_safe: true` as earned evidence, not as a default.
+3. Spawn harness subagents in parallel only for cards with disjoint ownership
+   and no dependency conflict.
+4. Do not run conflicting cards together just to increase concurrency.
+5. Update `kanban.json` after every card move.
+6. Use atomic commits per card.
+7. Treat `kanban.json` as SSOT and Trello as its live projection.
+8. Never move a Trello card silently; every move needs a short Russian comment.
+9. Before `Review`, run `codex_wp review ...`.
+10. Before `Simplification`, run `$code-simplification`.
+11. Before `Auto-commit`, run `$auto-commit`.
+12. If a card stays above 4 story points, keep the size exception truthful instead of inventing fake slices.
+
+## Move Commands
+
+```bash
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "In progress"
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "Blocked" --blocked-reason "..."
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "Review" --review-selector="--base main" --review-verdict LGTM --review-summary "Ключевой итог ревью."
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "Simplification" --simplification-outcome "Упростил без смены поведения." --simplification-summary "Что именно стало проще."
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "Auto-commit" --commit-sha abc123 --commit-subject "fix: short subject"
+node "{{move_script}}" --package-dir "{{package_dir}}" --package-card-id <CARD_ID> --to-list "Done" --done-summary "Итог по карточке."
+```
+
+Generated Russian comment shapes:
+
+- `In progress`: `Взял в работу.`
+- `Blocked`: `Есть блокер: ...`
+- `Review`: `Ревью: LGTM - ...` or `Ревью: BLOCKED - ...`
+- `Simplification`: `Упростил: ...`
+- `Auto-commit`: `Коммит: abc123 ...` or `Коммит блокирован: ...`
+- `Done`: `Готово: ...`
+
+## Recommended Flow
+
+1. Read `kanban.json`.
+2. Pick the highest-priority ready cards.
+3. If multiple ready cards are marked parallel-safe, launch them in parallel.
+4. If a card has dependencies, wait until blockers are done.
+5. Sync the matching Trello card move with `move_trello_card.js` and a short Russian comment.
+6. Store lane evidence before or with each move.
+7. Move finished cards through review, simplification, auto-commit, and done with an updated `kanban.json`.

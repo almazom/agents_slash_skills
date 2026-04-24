@@ -8,6 +8,7 @@ description: >
   reference), and media processing (convert, concat, trim, extract).
   Use when the user mentions MiniMax, multimodal generation, or wants speech/music/video/image AI,
   MiniMax APIs, or FFmpeg workflows alongside MiniMax outputs.
+triggers: minimax-multimodal-toolkit, MiniMax, minimax, TTS, text-to-speech, voice cloning, voice design, text-to-video, image-to-video, text-to-image, image-to-image, music generation, video generation, FFmpeg, multimodal, AI speech, AI music, AI video, AI image
 license: MIT
 metadata:
   version: "1.0"

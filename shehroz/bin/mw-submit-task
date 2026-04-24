@@ -1,0 +1,82 @@
+#!/bin/bash
+# Submit a prepared task file into an interactive codex worker and perform the mandatory post-submit watch.
+# Usage: mw-submit-task [--watch-seconds 30] <worker_pane_id> <task_file>
+
+set -euo pipefail
+
+WATCH_SECONDS=30
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --watch-seconds)
+            WATCH_SECONDS="${2:-}"
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+WORKER_ID="${1:-}"
+TASK_FILE="${2:-}"
+
+if [[ -z "$WORKER_ID" || -z "$TASK_FILE" ]]; then
+    echo "Usage: mw-submit-task [--watch-seconds 30] <worker_pane_id> <task_file>" >&2
+    exit 1
+fi
+
+if [[ ! -f "$TASK_FILE" ]]; then
+    echo "Error: task file not found: $TASK_FILE" >&2
+    exit 1
+fi
+
+/Users/al/.agents/skills/shehroz/bin/mw-check-contract "$TASK_FILE"
+
+RUN_ROOT="$(cd "$(dirname "$TASK_FILE")/.." && pwd)"
+RESULTS_DIR="$RUN_ROOT/results"
+PROMPTS_DIR="$RUN_ROOT/prompts"
+PROMPT_HISTORY_FILE="$RUN_ROOT/prompt-history.jsonl"
+mkdir -p "$RESULTS_DIR"
+mkdir -p "$PROMPTS_DIR"
+
+CONTENT="$(cat "$TASK_FILE")"
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+PROMPT_COPY="$PROMPTS_DIR/submitted-$STAMP.txt"
+cp "$TASK_FILE" "$PROMPT_COPY"
+cp "$TASK_FILE" "$RUN_ROOT/prompt.md"
+
+python3 - "$PROMPT_HISTORY_FILE" "$STAMP" "$WORKER_ID" "$TASK_FILE" "$PROMPT_COPY" <<'PY'
+import json
+import sys
+
+history_path, stamp, worker_id, source_path, prompt_copy = sys.argv[1:]
+payload = {
+    "timestamp_utc": stamp,
+    "kind": "task_submit",
+    "worker_pane_id": worker_id,
+    "source_path": source_path,
+    "stored_prompt_path": prompt_copy,
+    "latest_prompt_md": "prompt.md",
+}
+with open(history_path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+PY
+
+wezterm cli send-text --pane-id "$WORKER_ID" "$CONTENT"
+sleep 0.3
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+
+wezterm cli get-text --pane-id "$WORKER_ID" --start-line -60 > "$RESULTS_DIR/post-submit-immediate.txt"
+
+sleep "$WATCH_SECONDS"
+
+wezterm cli get-text --pane-id "$WORKER_ID" --start-line -80 > "$RESULTS_DIR/post-submit-${WATCH_SECONDS}s.txt"
+
+echo "✅ Submitted task file to worker $WORKER_ID"
+echo "Prompt mirror: $RUN_ROOT/prompt.md"
+echo "Prompt history: $PROMPT_HISTORY_FILE"
+echo "Immediate snapshot: $RESULTS_DIR/post-submit-immediate.txt"
+echo "Post-submit watch snapshot: $RESULTS_DIR/post-submit-${WATCH_SECONDS}s.txt"
+echo "Spawn is only truthful if the post-submit snapshot shows runtime movement."

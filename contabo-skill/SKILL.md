@@ -1,5 +1,7 @@
 ---
+name: contabo-skill
 description: Deploy and manage projects on Contabo VPS 212.28.182.235
+triggers: contabo-skill, $contabo-skill, contabo, VPS, 212.28.182.235, deploy contabo, almaz contabo, Contabo VPS, deploy to contabo
 tags: [contabo, deployment, infrastructure]
 ---
 
@@ -63,14 +65,14 @@ scp -i /home/pets/.ssh/docutranslate_ru_proxy <file> almaz@212.28.182.235:<path>
 
 | Project | Local Path | Contabo Path |
 |---------|-----------|--------------|
-| DocuTranslate | ~/zoo/docutranslate | ~/docutranslate_contabo |
+| DocuTranslate | ~/zoo/_to_remove_docutranslate | ~/docutranslate_contabo |
 
 ## Deployment Workflow
 
 ### 1. Pack project locally
 
 ```bash
-cd /home/pets/zoo/docutranslate
+cd /home/pets/zoo/_to_remove_docutranslate
 zip -r /tmp/docutranslate.zip . -x ".git/*" "node_modules/*" ".venv/*" "__pycache__/*" "*.pyc"
 ```
 

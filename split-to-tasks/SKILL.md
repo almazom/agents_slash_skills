@@ -1,6 +1,15 @@
 ---
 name: split-to-tasks
-description: Generate a Trello-style execution package from a Markdown IMPLEMENTATION_PLAN using /home/almaz/TOOLS/split_to_tasks_skill_cli. Use when the user wants to split a plan into self-contained task cards, enforce a max size of 4 story points and about 4 hours per card, create kanban.json as the execution SSOT with derived state.json and progress.md, render a live board view, emit cards_catalog.md and trello_quality_gate.json, or produce a notify-me handoff after package generation.
+description: >-
+  Generate a Trello-style execution package from a Markdown
+  `IMPLEMENTATION_PLAN` using `/home/almaz/TOOLS/split_to_tasks_skill_cli`. Use
+  when the user wants to split a plan into self-contained task cards, enforce a
+  max size of 4 story points and about 4 hours per card, create `kanban.json`
+  as the execution SSOT with derived `state.json` and `progress.md`, render a
+  live board view, emit `cards_catalog.md` and `trello_quality_gate.json`, or
+  produce a `notify-me` handoff after package generation. Triggers on:
+  `split-to-tasks`, `$split-to-tasks`.
+triggers: split-to-tasks, $split-to-tasks, split plan, split to tasks, kanban.json, task cards, execution package, split_to_tasks_skill_cli, Trello cards from plan, plan splitting
 ---
 
 # split-to-tasks

@@ -1,15 +1,16 @@
 ---
 name: docutranslate
-description: This skill should be used when the user wants to translate office documents through the local DocuTranslate wrapper in `/home/pets/TOOLS/docutranslate_cli_skill`. Triggers on mentions of `docutranslate`, `dt`, document translation, `docx`, `xlsx`, `pptx`, output formats, DeepSeek glossary tuning, office smoke tests, translation quality review, or delivery wiring. Use `/home/pets/zoo/docutranslate` only as a read-only upstream reference and never as the working tree.
+description: This skill should be used when the user wants to translate office documents through the canonical DocuTranslate wrapper on `almaz` at `/home/almaz/TOOLS/docutranslate_cli_skill`. Triggers on mentions of `docutranslate`, `dt`, document translation, `docx`, `xlsx`, `pptx`, output formats, DeepSeek glossary tuning, office smoke tests, translation quality review, or delivery wiring. The old pets-side repo is deprecated and should not be used as the working tree.
+triggers: docutranslate, dt, document translation, translate document, docx translation, xlsx translation, pptx translation, office translation, DeepSeek glossary, translate office, translate pdf, translate docx
 ---
 
 # DocuTranslate
 
-Use this skill for the local DocuTranslate wrapper repo:
+Use this skill for the canonical DocuTranslate wrapper repo on `almaz`:
 
-- `/home/pets/TOOLS/docutranslate_cli_skill`
+- `/home/almaz/TOOLS/docutranslate_cli_skill`
 
-The global CLI entrypoints are already on `PATH`:
+The global CLI entrypoints on `pets` should route to `almaz`:
 
 - `docutranslate`
 - `dt`
@@ -40,9 +41,9 @@ Before substantial work in that repo, read:
 
 ## Hard boundary
 
-- Make changes in `/home/pets/TOOLS/docutranslate_cli_skill`
-- Do not edit `/home/pets/zoo/docutranslate`
-- Treat `/home/pets/zoo/docutranslate` as read-only upstream evidence
+- Make changes in `/home/almaz/TOOLS/docutranslate_cli_skill`
+- Do not revive the deprecated pets-side wrapper repo as the working tree
+- Treat the old pets-side copy as `_to_remove` evidence only if it still exists
 
 ## Core rules
 
@@ -55,11 +56,11 @@ Before substantial work in that repo, read:
 ## Common commands
 
 ```bash
-cd /home/pets/TOOLS/docutranslate_cli_skill
+ssh almaz 'cd /home/almaz/TOOLS/docutranslate_cli_skill && pwd'
 ```
 
 ```bash
-docutranslate --help
+ssh almaz 'cd /home/almaz/TOOLS/docutranslate_cli_skill && ./docutranslate --help'
 ```
 
 ```bash
@@ -83,8 +84,8 @@ python3 scripts/verify_office_run.py runs/manual/<run-dir> --write
 - direct file translation -> `dt /abs/path/to/file`
 - JSON result path plus progress -> `dt /abs/path/to/file --pretty`
 - supported output formats -> `dt --list-output-formats /abs/path/to/file --pretty`
-- office regression run -> `python3 scripts/run_office_smoke_matrix.py --pretty`
-- verify Russian text exists in outputs -> `python3 scripts/verify_office_run.py <run-dir> --write`
+- office regression run -> `ssh almaz 'cd /home/almaz/TOOLS/docutranslate_cli_skill && python3 scripts/run_office_smoke_matrix.py --pretty'`
+- verify Russian text exists in outputs -> `ssh almaz 'cd /home/almaz/TOOLS/docutranslate_cli_skill && python3 scripts/verify_office_run.py <run-dir> --write'`
 - tune DeepSeek defaults -> `configs/models/deepseek-chat.toml`
 - tune profile glossary or prompt -> `configs/models/*.toml`
 - review translation quality -> compare source fixtures or source files against outputs in `runs/manual/...`

@@ -1,5 +1,7 @@
 ---
+name: codex-orchestrator
 description: Manage codex_wp workers implementing Trello cards from kanban.json
+triggers: codex-orchestrator, $codex-orchestrator, orchestrate codex workers, kanban implementation, codex worker management, hook-supervision, codex_wp exec kanban
 tags: [orchestration, codex, automation]
 ---
 

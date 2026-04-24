@@ -1,4 +1,4 @@
 interface:
   display_name: "DocuTranslate"
-  short_description: "Operate the local docutranslate / dt wrapper and its profiles"
-  default_prompt: "Use $docutranslate to operate the local DocuTranslate wrapper in /home/pets/TOOLS/docutranslate_cli_skill, not the upstream repo. Prefer the global docutranslate or dt CLI, keep /home/pets/zoo/docutranslate read-only, and use the repo memory before changing configs or glossary."
+  short_description: "Operate the canonical almaz docutranslate / dt wrapper and its profiles"
+  default_prompt: "Use $docutranslate to operate the canonical DocuTranslate wrapper on almaz in /home/almaz/TOOLS/docutranslate_cli_skill. Prefer the global docutranslate or dt CLI wrappers that route to almaz, keep deprecated pets-side copies out of the working path, and use the repo memory before changing configs or glossary."

@@ -6,7 +6,10 @@ __pycache__/
 dist/
 build/
 *.log
+*.bak-*
 .DS_Store
 Thumbs.db
 **/bin/
 **/obj/
+!shehroz/bin/
+!shehroz/bin/**

@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export PATH="/opt/homebrew/bin:$PATH"
+
+MANAGER_PANE=""
+MESSAGE=""
+WATCH_SECONDS=30
+POLL_SECONDS=5
+SUBMIT_RETRIES=3
+SUBMIT_SETTLE_SECONDS=1
+FORCEFUL_SUBMIT_BURST=3
+RESULT_FILE=""
+DRY_RUN=false
+
+usage() {
+    cat <<'EOF'
+Usage: manager-note-to-manager --manager-pane <id> --message <text> [options]
+
+Options:
+  --manager-pane <id>      Target manager pane id
+  --message <text>         One-line wakeup message
+  --watch-seconds <n>      Post-submit watch length in seconds (default: 30)
+  --poll-seconds <n>       Poll cadence during the watch (default: 5)
+  --submit-retries <n>     Retry CR submit up to N times while the message is still visibly stuck (default: 3)
+  --submit-settle <n>      Seconds to wait after each CR before checking the prompt line (default: 1)
+  --forceful-submit-burst <n>
+                           After normal retries, send N extra CR bytes through stdin when submit still looks stuck (default: 3)
+  --result-file <path>     Optional JSON result path
+  --dry-run                Do not inject or submit; only print the config
+  --help                   Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --manager-pane)
+            MANAGER_PANE="${2:-}"
+            shift 2
+            ;;
+        --message)
+            MESSAGE="${2:-}"
+            shift 2
+            ;;
+        --watch-seconds)
+            WATCH_SECONDS="${2:-}"
+            shift 2
+            ;;
+        --poll-seconds)
+            POLL_SECONDS="${2:-}"
+            shift 2
+            ;;
+        --submit-retries)
+            SUBMIT_RETRIES="${2:-}"
+            shift 2
+            ;;
+        --submit-settle)
+            SUBMIT_SETTLE_SECONDS="${2:-}"
+            shift 2
+            ;;
+        --forceful-submit-burst)
+            FORCEFUL_SUBMIT_BURST="${2:-}"
+            shift 2
+            ;;
+        --result-file)
+            RESULT_FILE="${2:-}"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ -z "$MANAGER_PANE" || -z "$MESSAGE" ]]; then
+    usage >&2
+    exit 1
+fi
+
+MESSAGE="${MESSAGE//$'\n'/ }"
+
+snapshot() {
+    wezterm cli get-text --pane-id "$MANAGER_PANE" --start-line -120 2>/dev/null || true
+}
+
+hash_text() {
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+}
+
+last_nonempty_line() {
+    printf '%s\n' "$1" | awk 'NF{line=$0} END{print line}'
+}
+
+write_result() {
+    local transport_status="$1"
+    local visible_injection_proved="$2"
+    local submit_attempted="$3"
+    local pane_changed_after_submit="$4"
+    local message_stuck_in_last_line="$5"
+    local before_hash="$6"
+    local after_inject_hash="$7"
+    local after_submit_hash="$8"
+    local final_hash="$9"
+    local submit_attempts_made="${10}"
+    local submit_retries_max="${11}"
+    local manager_focus_attempted="${12}"
+    local manager_focus_succeeded="${13}"
+    local submit_focus_attempted="${14}"
+    local submit_focus_succeeded="${15}"
+    local forceful_submit_attempted="${16}"
+    local forceful_submit_burst="${17}"
+    local forceful_submit_changed_pane="${18}"
+
+    if [[ -n "$RESULT_FILE" ]]; then
+        mkdir -p "$(dirname "$RESULT_FILE")"
+    fi
+
+    python3 - "$RESULT_FILE" "$MANAGER_PANE" "$MESSAGE" "$WATCH_SECONDS" "$transport_status" \
+        "$visible_injection_proved" "$submit_attempted" "$pane_changed_after_submit" \
+        "$message_stuck_in_last_line" "$before_hash" "$after_inject_hash" \
+        "$after_submit_hash" "$final_hash" "$submit_attempts_made" \
+        "$submit_retries_max" "$manager_focus_attempted" "$manager_focus_succeeded" \
+        "$submit_focus_attempted" "$submit_focus_succeeded" "$forceful_submit_attempted" \
+        "$forceful_submit_burst" "$forceful_submit_changed_pane" <<'PY'
+import json
+import os
+import sys
+from datetime import datetime, timezone
+
+(
+    result_file,
+    manager_pane,
+    message,
+    watch_seconds,
+    transport_status,
+    visible_injection_proved,
+    submit_attempted,
+    pane_changed_after_submit,
+    message_stuck_in_last_line,
+    before_hash,
+    after_inject_hash,
+    after_submit_hash,
+    final_hash,
+    submit_attempts_made,
+    submit_retries_max,
+    manager_focus_attempted,
+    manager_focus_succeeded,
+    submit_focus_attempted,
+    submit_focus_succeeded,
+    forceful_submit_attempted,
+    forceful_submit_burst,
+    forceful_submit_changed_pane,
+) = sys.argv[1:]
+
+payload = {
+    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+    "manager_pane": manager_pane,
+    "message": message,
+    "watch_seconds": int(watch_seconds),
+    "transport_status": transport_status,
+    "visible_injection_proved": visible_injection_proved.lower() == "true",
+    "submit_attempted": submit_attempted.lower() == "true",
+    "pane_changed_after_submit": pane_changed_after_submit.lower() == "true",
+    "message_stuck_in_last_line": message_stuck_in_last_line.lower() == "true",
+    "before_hash": before_hash,
+    "after_inject_hash": after_inject_hash,
+    "after_submit_hash": after_submit_hash,
+    "final_hash": final_hash,
+    "submit_attempts_made": int(submit_attempts_made),
+    "submit_retries_max": int(submit_retries_max),
+    "manager_focus_attempted": manager_focus_attempted.lower() == "true",
+    "manager_focus_succeeded": manager_focus_succeeded.lower() == "true",
+    "submit_focus_attempted": submit_focus_attempted.lower() == "true",
+    "submit_focus_succeeded": submit_focus_succeeded.lower() == "true",
+    "forceful_submit_attempted": forceful_submit_attempted.lower() == "true",
+    "forceful_submit_burst": int(forceful_submit_burst),
+    "forceful_submit_changed_pane": forceful_submit_changed_pane.lower() == "true",
+}
+
+if result_file:
+    with open(result_file, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+
+print(json.dumps(payload, ensure_ascii=False))
+PY
+}
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    write_result "dry_run" "false" "false" "false" "false" "-" "-" "-" "-" "0" "$SUBMIT_RETRIES" "false" "false" "false" "false" "false" "$FORCEFUL_SUBMIT_BURST" "false"
+    exit 0
+fi
+
+BEFORE_SNAPSHOT="$(snapshot)"
+BEFORE_HASH="$(hash_text "$BEFORE_SNAPSHOT")"
+
+MANAGER_FOCUS_ATTEMPTED=true
+MANAGER_FOCUS_SUCCEEDED=false
+if wezterm cli activate-pane --pane-id "$MANAGER_PANE" >/dev/null 2>&1; then
+    MANAGER_FOCUS_SUCCEEDED=true
+fi
+
+wezterm cli send-text --pane-id "$MANAGER_PANE" --no-paste "$MESSAGE"
+sleep 0.3
+
+AFTER_INJECT_SNAPSHOT="$(snapshot)"
+AFTER_INJECT_HASH="$(hash_text "$AFTER_INJECT_SNAPSHOT")"
+VISIBLE_INJECTION_PROVED=false
+if printf '%s' "$AFTER_INJECT_SNAPSHOT" | grep -Fq "$MESSAGE"; then
+    VISIBLE_INJECTION_PROVED=true
+fi
+
+SUBMIT_ATTEMPTED=false
+SUBMIT_ATTEMPTS_MADE=0
+SUBMIT_FOCUS_ATTEMPTED=true
+SUBMIT_FOCUS_SUCCEEDED=false
+if wezterm cli activate-pane --pane-id "$MANAGER_PANE" >/dev/null 2>&1; then
+    SUBMIT_FOCUS_SUCCEEDED=true
+fi
+AFTER_SUBMIT_SNAPSHOT="$AFTER_INJECT_SNAPSHOT"
+AFTER_SUBMIT_HASH="$AFTER_INJECT_HASH"
+FINAL_SNAPSHOT="$AFTER_INJECT_SNAPSHOT"
+FINAL_HASH="$AFTER_INJECT_HASH"
+PANE_CHANGED_AFTER_SUBMIT=false
+FORCEFUL_SUBMIT_ATTEMPTED=false
+FORCEFUL_SUBMIT_CHANGED_PANE=false
+
+while (( SUBMIT_ATTEMPTS_MADE < SUBMIT_RETRIES )); do
+    SUBMIT_ATTEMPTS_MADE=$((SUBMIT_ATTEMPTS_MADE + 1))
+    wezterm cli send-text --pane-id "$MANAGER_PANE" --no-paste $'\r'
+    SUBMIT_ATTEMPTED=true
+    sleep "$SUBMIT_SETTLE_SECONDS"
+
+    AFTER_SUBMIT_SNAPSHOT="$(snapshot)"
+    AFTER_SUBMIT_HASH="$(hash_text "$AFTER_SUBMIT_SNAPSHOT")"
+    FINAL_SNAPSHOT="$AFTER_SUBMIT_SNAPSHOT"
+    FINAL_HASH="$AFTER_SUBMIT_HASH"
+
+    if [[ "$AFTER_SUBMIT_HASH" != "$AFTER_INJECT_HASH" ]]; then
+        PANE_CHANGED_AFTER_SUBMIT=true
+        break
+    fi
+
+    LAST_LINE_AFTER_SUBMIT="$(last_nonempty_line "$AFTER_SUBMIT_SNAPSHOT")"
+    if [[ "$LAST_LINE_AFTER_SUBMIT" != *"$MESSAGE"* ]]; then
+        break
+    fi
+done
+
+if [[ "$PANE_CHANGED_AFTER_SUBMIT" == "false" ]]; then
+    LAST_LINE_AFTER_RETRIES="$(last_nonempty_line "$AFTER_SUBMIT_SNAPSHOT")"
+    if [[ "$LAST_LINE_AFTER_RETRIES" == *"$MESSAGE"* ]]; then
+        FORCEFUL_SUBMIT_ATTEMPTED=true
+        if wezterm cli activate-pane --pane-id "$MANAGER_PANE" >/dev/null 2>&1; then
+            SUBMIT_FOCUS_SUCCEEDED=true
+        fi
+
+        CR_BURST=""
+        for ((i = 0; i < FORCEFUL_SUBMIT_BURST; i++)); do
+            CR_BURST+=$'\r'
+        done
+
+        if [[ -n "$CR_BURST" ]]; then
+            printf '%s' "$CR_BURST" | wezterm cli send-text --pane-id "$MANAGER_PANE" --no-paste
+            SUBMIT_ATTEMPTED=true
+            sleep "$SUBMIT_SETTLE_SECONDS"
+
+            AFTER_SUBMIT_SNAPSHOT="$(snapshot)"
+            AFTER_SUBMIT_HASH="$(hash_text "$AFTER_SUBMIT_SNAPSHOT")"
+            FINAL_SNAPSHOT="$AFTER_SUBMIT_SNAPSHOT"
+            FINAL_HASH="$AFTER_SUBMIT_HASH"
+
+            if [[ "$AFTER_SUBMIT_HASH" != "$AFTER_INJECT_HASH" ]]; then
+                PANE_CHANGED_AFTER_SUBMIT=true
+                FORCEFUL_SUBMIT_CHANGED_PANE=true
+            fi
+        fi
+    fi
+fi
+
+DEADLINE=$((SECONDS + WATCH_SECONDS))
+while (( SECONDS < DEADLINE )); do
+    CURRENT_SNAPSHOT="$(snapshot)"
+    CURRENT_HASH="$(hash_text "$CURRENT_SNAPSHOT")"
+    FINAL_SNAPSHOT="$CURRENT_SNAPSHOT"
+    FINAL_HASH="$CURRENT_HASH"
+    if [[ "$CURRENT_HASH" != "$AFTER_INJECT_HASH" ]]; then
+        PANE_CHANGED_AFTER_SUBMIT=true
+    fi
+    sleep "$POLL_SECONDS"
+done
+
+LAST_LINE="$(last_nonempty_line "$FINAL_SNAPSHOT")"
+MESSAGE_STUCK_IN_LAST_LINE=false
+if [[ "$LAST_LINE" == *"$MESSAGE"* ]]; then
+    MESSAGE_STUCK_IN_LAST_LINE=true
+fi
+
+TRANSPORT_STATUS="prompt_not_ready"
+EXIT_CODE=1
+if [[ "$PANE_CHANGED_AFTER_SUBMIT" == "true" && "$MESSAGE_STUCK_IN_LAST_LINE" == "false" ]]; then
+    TRANSPORT_STATUS="startup_proved"
+    EXIT_CODE=0
+elif [[ "$VISIBLE_INJECTION_PROVED" == "true" && "$SUBMIT_ATTEMPTED" == "true" ]]; then
+    TRANSPORT_STATUS="submitted_without_startup_proof"
+fi
+
+write_result "$TRANSPORT_STATUS" "$VISIBLE_INJECTION_PROVED" "$SUBMIT_ATTEMPTED" \
+    "$PANE_CHANGED_AFTER_SUBMIT" "$MESSAGE_STUCK_IN_LAST_LINE" "$BEFORE_HASH" \
+    "$AFTER_INJECT_HASH" "$AFTER_SUBMIT_HASH" "$FINAL_HASH" \
+    "$SUBMIT_ATTEMPTS_MADE" "$SUBMIT_RETRIES" "$MANAGER_FOCUS_ATTEMPTED" "$MANAGER_FOCUS_SUCCEEDED" \
+    "$SUBMIT_FOCUS_ATTEMPTED" "$SUBMIT_FOCUS_SUCCEEDED" "$FORCEFUL_SUBMIT_ATTEMPTED" \
+    "$FORCEFUL_SUBMIT_BURST" "$FORCEFUL_SUBMIT_CHANGED_PANE"
+
+exit "$EXIT_CODE"

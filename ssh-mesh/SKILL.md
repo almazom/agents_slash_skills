@@ -1,6 +1,7 @@
 ---
 name: ssh-mesh
 description: Shared SSH mesh runbook for the al, pets, and almaz nodes. Use when tasks involve SSH aliases, host reachability, key-based trust, directional connectivity, SCP flows, keepalive settings, or validating multi-node communication between these machines.
+triggers: ssh-mesh, $ssh-mesh, SSH, SSH alias, pets ssh, almaz ssh, al ssh, SCP, SSH key, authorized_keys, known_hosts, SSH connectivity, SSH mesh, keepalive, multi-node SSH, host reachability
 ---
 
 # SSH Mesh

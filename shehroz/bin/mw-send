@@ -1,0 +1,63 @@
+#!/bin/bash
+# Send text to an active worker prompt without interrupting the session.
+
+set -euo pipefail
+
+RUN_ROOT=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --run-root)
+            RUN_ROOT="${2:-}"
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+WORKER_ID=${1:-5}
+shift
+PROMPT="$*"
+
+if [ -z "$PROMPT" ]; then
+    echo "Usage: mw-send [--run-root /abs/run-root] <worker_id> <prompt>"
+    exit 1
+fi
+
+if [[ -n "$RUN_ROOT" ]]; then
+    mkdir -p "$RUN_ROOT/prompts"
+    STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    PROMPT_PATH="$RUN_ROOT/prompts/followup-$STAMP.txt"
+    printf '%s\n' "$PROMPT" > "$PROMPT_PATH"
+    printf '%s\n' "$PROMPT" > "$RUN_ROOT/prompt.md"
+    python3 - "$RUN_ROOT/prompt-history.jsonl" "$STAMP" "$WORKER_ID" "$PROMPT_PATH" <<'PY'
+import json
+import sys
+
+history_path, stamp, worker_id, prompt_path = sys.argv[1:]
+payload = {
+    "timestamp_utc": stamp,
+    "kind": "direct_send",
+    "worker_pane_id": worker_id,
+    "source_path": prompt_path,
+    "stored_prompt_path": prompt_path,
+    "latest_prompt_md": "prompt.md",
+}
+with open(history_path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+PY
+fi
+
+# Send prompt
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste "$PROMPT"
+sleep 0.3
+
+# Submit
+wezterm cli send-text --pane-id "$WORKER_ID" --no-paste $'\x0d'
+
+echo "📤 Sent to worker $WORKER_ID: $PROMPT"
+if [[ -n "$RUN_ROOT" ]]; then
+    echo "Prompt stored under: $RUN_ROOT"
+fi

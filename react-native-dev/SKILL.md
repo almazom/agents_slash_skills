@@ -7,6 +7,7 @@ description: |
   Use when: building React Native or Expo apps, implementing animations or native UI, managing
   state, fetching data, writing tests, optimizing performance, deploying to App Store/Play Store,
   setting up CI/CD, upgrading Expo SDK, or configuring Tailwind/NativeWind.
+triggers: react-native-dev, React Native, Expo, React Native app, Expo SDK, NativeWind, EAS, react-native, expo dev, App Store deploy, Play Store deploy, React Native test, React Native navigation, React Native animation
 license: MIT
 metadata:
   version: "1.0.0"

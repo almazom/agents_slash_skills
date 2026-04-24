@@ -1,6 +1,7 @@
 ---
 name: codex-review
 description: Use only when the user explicitly asks to run the local `codex-review` wrapper or names `$codex-review`. This skill wraps raw Codex review (primary) or falls back to glm_wp with identical review prompts when codex is unavailable. No extra prompt layer, supports `--uncommitted`, `--base <branch>`, or `--commit <sha>`, and writes repo-local artifacts under `.codex-review/runs`.
+triggers: codex-review, $codex-review, code review codex, codex_review, review wrapper, glm_wp review, codex-review-skill
 ---
 
 # codex-review

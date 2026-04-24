@@ -1,0 +1,4 @@
+interface:
+  display_name: "Observer"
+  short_description: "Observe worker panes with mini-pane, cron, and wakeup helpers"
+  default_prompt: "Use $observer to start or inspect a worker observer with heartbeat, idle detection, and manager wakeup proof."

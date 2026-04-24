@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pane To Pane"
+  short_description: "Prove and debug message delivery between WezTerm panes"
+  default_prompt: "Use $pane-to-pane-communication when the task is specifically about cross-pane delivery, manager-worker wakeups, or proving whether send-text reached the intended shell or interactive Codex pane."

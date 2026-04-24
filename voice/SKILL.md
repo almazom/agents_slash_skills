@@ -1,6 +1,7 @@
 ---
 name: voice
 description: Generate a spoken-style answer, mp3, or optional Telegram-delivered audio through the standalone Voice runtime in /home/pets/TOOLS/voice_skill_cli.
+triggers: voice, $voice, TTS, text-to-speech, audio generation, mp3, voice skill, spoken answer, voice_skill_cli, voice explain, voice speak, voice run, Telegram audio
 ---
 
 ## Skill trace
