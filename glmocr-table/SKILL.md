@@ -5,6 +5,7 @@ description:
   ZhiPu GLM-OCR API. Supports complex tables, merged cells, and multi-page documents.
   Use this skill when the user wants to extract tables, recognize spreadsheets,
   or convert table images to editable format.
+triggers: glmocr-table, GLM-OCR, table extraction, table recognition, OCR table, extract tables from PDF, extract tables from image, spreadsheet OCR, Markdown table, ZhiPu OCR, table to Markdown
 metadata:
   openclaw:
     requires:

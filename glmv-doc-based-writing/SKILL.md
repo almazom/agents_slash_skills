@@ -3,6 +3,7 @@ name: glmv-doc-based-writing
 description:
   Write a textual content based on given document(s) and requirements, using ZhiPu GLM-V multimodal model.
   Read and comprehend one or multiple documents (PDF/DOCX), write a content in Markdown format according to the specified requirements. Use when the user wants to draft a paper/article/essay/report/review/post/brief/proposal/plan, etc.
+triggers: glmv-doc-based-writing, GLM-V, document-based writing, write from document, draft paper, draft article, draft essay, draft report, write from PDF, write from DOCX, ZhiPu GLM-V, document comprehension, doc-based writing
 metadata:
   openclaw:
     requires:
